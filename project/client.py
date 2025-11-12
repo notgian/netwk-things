@@ -1,125 +1,55 @@
 import socket
-import random
-
-# name = socket.gethostname()
-# ip = socket.gethostbyname(name)
-# print(name, ip)
-
-DEFAULT_PORT = 4566
-
+import config
 
 class Client:
-    def __init__(self, port=DEFAULT_PORT):
-
+    """Handles the low-level UDP socket operations (Sending/receiving bytes)."""
+    def __init__(self, buffer_size=config.BUFFER_SIZE):
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         except socket.error as e:
-            print(f"Failed to create socket: {e}")
+            print(f"[Client] Failed to create socket: {e}")
             exit()
 
-        self.opponent_addr = None
-
-        # automatically get host info
-        name = socket.gethostname()
-        ip = socket.gethostbyname(name)
-
-        self.hostname = ip
-        self.host = ip
-        self.port = port
-
-        self.buffer_size = 4096
-
-        self.match_data = dict()
+        self.buffer_size = buffer_size
 
         print("Initialized client!")
-        print("Name : " + self.hostname)
-        print("IP: " + self.host)
 
-    def start_hosting(self):
-        """ Acts as the Host Peer."""
+    def bind_socket(self, host, port):
+        """ Binds the socket so that the Host is online"""
         try:
-            self.sock.bind((self.host, self.port))
-            print (f"\n[Host] Listening on {self.host}:{self.port}")
+            self.sock.bind((host, port))
+            print (f"\nSocket bound to {host}:{port}")
+            return True
         except socket.error as e:
-            print(f"\n[Host]  Failed to bind socket {e}")
+            print(f"\nFailed to bind socket {host}:{port}. Error: {e}")
             return False
 
+    def send_to(self, message_text: str, address: tuple):
+        """Encodes and sends a plain text message to the given address."""
         try:
-            print("[Host] Waiting for a connection...")
-            data, address = self.sock.recvfrom(self.buffer_size)
-            message = data.decode("utf-8")
-            print(f"\n[Host] Received message from {address}:")
-            print(message)
-
-            if "message_type: HANDSHAKE_REQUEST" in message:
-                print("\n[HANDSHAKE_REQUEST] Received HANDSHAKE_REQUEST")
-                self.opponent_addr = address
-                seed = random.randint(1,99999)
-                self.match_data['seed'] = seed
-
-                response_message = (
-                    f"message_type: HANDSHAKE_RESPONSE\n"
-                    f"seed: {seed}\n"
-                )
-
-                self.sock.sendto(response_message.encode('utf-8'), self.opponent_addr)
-                print("[HANDSHAKE_RESPONSE] Sent HANDSHAKE_RESPONSE")
-                return True
-            else:
-                print("\n[HANDSHAKE_REQUEST] Received non-handshake message. Ignoring")
-                return False
-
+            self.sock.sendto(message_text.encode(), address)
         except socket.error as e:
-            print(f"\n[Host] Socket error while hosting: {e}")
-            return False
+            print(f"\nFailed to send message to {address}. Error: {e}")
 
-    def join_host(self, host, port):
-        host_addr = (host, port)
-
-        request_message = f"message_type: HANDSHAKE_REQUEST\n"
-
+    def receive_from(self, timeout=None):
+        """
+        Receive a plain text message from the given address.
+        Returns the decoded message (str) and the sender's address, None if no message is received.
+        """
         try:
-            print(f"\n[CLIENT] Joining {host}:{port}")
-            self.sock.sendto(request_message.encode('utf-8'), host_addr)
-
-            self.sock.settimeout(5.0)
-
+            self.sock.settimeout(timeout)
             data, address = self.sock.recvfrom(self.buffer_size)
-            message = data.decode("utf-8")
-
-            self.opponent_addr = address
-
-            print(f"\n[CLIENT] Received message from {address}:")
-            print(message)
-
-            if "message_type: HANDSHAKE_RESPONSE" in message:
-                print("[HANDSHAKE_REQUEST] Received correct message. Handshake successful")
-
-                for line in message.split('\n'):
-                    if 'seed:' in line:
-                        self.match_data['seed'] = int(line.split(':')[1].strip())
-                        print(f"Received seed: {self.match_data['seed']}")
-                return True
-            else:
-                print("\n[HANDSHAKE_REQUEST] Received non-handshake message. Ignoring")
-                return False
-
+            message = data.decode('utf-8')
+            return message, address
         except socket.timeout:
-            print("\n[CLIENT] Socket timed out. Ignoring")
-            self.opponent_addr = None
-            return False
+            return None, None
         except socket.error as e:
-            print(f"\n[CLIENT] Socket error while joining: {e}")
-            self.opponent_addr = None
-            return False
+            print(f"\nSocket error on receive. Error: {e}")
+            return None, None
+        finally:
+            self.sock.settimeout(None)
 
-    def send_message(self, message_data):
-        if not self.opponent_addr:
-            print("\n[MESSAGE] Not connected to any peer. Host or join a game first")
-            return
-
-        try:
-            self.sock.sendto(message_data.encode('utf-8'), self.opponent_addr)
-        except socket.error as e:
-            print(f"\n[MESSAGE] Error while sending message: {e}")
-
+    def close(self):
+        """Close the socket connection."""
+        self.sock.close()
+        print("\nSocket closed!")

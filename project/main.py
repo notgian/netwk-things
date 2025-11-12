@@ -1,4 +1,62 @@
 import messages as msg
+import socket
+from host import Host
+from player import Player
+import config
+
+def get_my_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('10.255.255.255', 1))
+        IP = s.getsockname()[0]
+    except Exception:
+        # Fallback to localhost
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
+
+if __name__ == "__main__":
+
+    my_ip = get_my_ip()
+    print(f"Your Local IP is: {my_ip}")
+    print(f"Default Port is: {config.DEFAULT_PORT}")
+
+    choice = ""
+    while choice not in ['H', 'J', 'S']:
+        choice = input("Run as (H)ost, (J)oiner, or (S)pectator? ").strip().upper()
+
+    if choice == 'H':
+        # --- Run as Host ---
+        host = Host(my_ip, config.DEFAULT_PORT)
+        host.run_host_loop() # This loop runs forever
+
+    elif choice == 'J' or choice == 'S':
+        # --- Run as Joiner or Spectator ---
+        host_ip = input(f"Enter Host IP (leave blank for {my_ip}): ").strip()
+        if not host_ip:
+            # Check if we are running the joiner on the same machine as host
+            host_ip_check = input(f"Is host on this machine? (Y/N) ").strip().upper()
+            if host_ip_check == 'Y':
+                host_ip = '127.0.0.1' # Use localhost if on same machine
+            else:
+                host_ip = my_ip # Use local network IP
+
+        # Use port 0 to let the OS pick any available port for the client
+        player = Player(host_ip, config.DEFAULT_PORT, local_port=0)
+
+        is_spectator = (choice == 'S')
+
+        # 1. Try to connect
+        if player.connect(as_spectator=is_spectator):
+            print("[Main] Connection to host successful.")
+            # 2. If successful, run the main game/spectator loop
+            player.run_game_loop()
+        else:
+            print("[Main] Failed to connect to host. Exiting.")
+
+    else:
+        print("Invalid choice.")
 
 
 def main():
@@ -44,6 +102,3 @@ def main():
         print(message.as_text())
         print("==============================")
 
-
-if __name__ == "__main__":
-    main()
