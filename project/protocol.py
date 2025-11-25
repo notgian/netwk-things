@@ -131,10 +131,10 @@ class GameProtocolHandler:
     #  PROTOCOL 4.4: BATTLE_SETUP
     # -----------------------------
     def start_battle_setup(
-        self,
-        pokemon_name: str,
-        stat_boosts: dict | None = None,
-        communication_mode: CommunicationMode = CommunicationMode.P2P,
+            self,
+            pokemon_name: str,
+            stat_boosts: dict | None = None,
+            communication_mode: CommunicationMode = CommunicationMode.P2P,
     ):
         self._ensure_local_identity()
 
@@ -193,9 +193,9 @@ class GameProtocolHandler:
             opponent_ip = self.opponent_addr[0]
 
         if (
-            opponent_ip
-            and opponent_ip in self.match_data
-            and self.local_ip in self.match_data
+                opponent_ip
+                and opponent_ip in self.match_data
+                and self.local_ip in self.match_data
         ):
             print("[PROTOCOL] BATTLE_SETUP complete on both sides.")
 
@@ -377,13 +377,13 @@ class GameProtocolHandler:
     #  PROTOCOL 4.7: CALCULATION_REPORT
     # -----------------------------
     def send_calculation_report(
-        self,
-        attacker: str,
-        move_used: str,
-        remaining_health: int,
-        damage_dealt: int,
-        defender_hp_remaining: int,
-        status_message: str,
+            self,
+            attacker: str,
+            move_used: str,
+            remaining_health: int,
+            damage_dealt: int,
+            defender_hp_remaining: int,
+            status_message: str,
     ):
         """
         NOTE: All of these values must be computed by the GAME LOGIC

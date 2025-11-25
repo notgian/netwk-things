@@ -3,6 +3,7 @@ import socket
 from host import Host
 from player import Player
 import config
+from spectator import Spectator
 
 
 def get_my_ip():
@@ -48,34 +49,25 @@ if __name__ == "__main__":
     # ---------------------------------------------------------
     # JOINER / SPECTATOR MODES
     # ---------------------------------------------------------
-    elif choice in ['J', 'S']:
-        is_spectator = (choice == 'S')
-
+    elif choice == 'J':
         host_ip = input(f"Enter Host IP (leave blank for {my_ip}): ").strip()
 
         if not host_ip:
             host_ip_check = input("Is the host running on this same machine? (Y/N): ").strip().upper()
             host_ip = '127.0.0.1' if host_ip_check == 'Y' else my_ip
 
-        # Use any available port for the local client
         player = Player(host_ip, config.DEFAULT_PORT, local_port=0)
+        player.connect_to_host()
 
-        print("\n[MAIN] Attempting to connect to host...\n")
+    elif choice == 'S':
+        host_ip = input(f"Enter Host IP (leave blank for {my_ip}): ").strip()
 
-        if player.connect(as_spectator=is_spectator):
-            print("\n[MAIN] Connection successful!\n")
+        if not host_ip:
+            host_ip_check = input("Is the host running on this same machine? (Y/N): ").strip().upper()
+            host_ip = '127.0.0.1' if host_ip_check == 'Y' else my_ip
 
-            if is_spectator:
-                print("[MAIN] Joined as Spectator.")
-            else:
-                print("[MAIN] Joined as Player.")
-
-            player.run_game_loop()
-
-        else:
-            print("[MAIN] Connection failed. Exiting.\n")
+        spectator = Spectator(host_ip, config.DEFAULT_PORT, local_port=0)
+        spectator.connect_to_host()
 
     else:
         print("Invalid mode selected. Exiting.")
-
-
