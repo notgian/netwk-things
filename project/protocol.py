@@ -314,6 +314,8 @@ class GameProtocolHandler:
         move_name = message_dict.get("move_name", "UnknownMove")
         print(f"[PROTOCOL] Received ATTACK_ANNOUNCE from opponent: {move_name}")
 
+        self.send_defense_announce()
+
         # The defender (us) should now respond with DEFENSE_ANNOUNCE when ready.
         # Actual UI logic (asking the user) is handled outside this class.
 

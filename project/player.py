@@ -8,20 +8,22 @@ from ast import literal_eval
 class Player:
     def __init__(self, host_ip, host_port, local_port):
         self.net_client = Client()
-        self.protocol_handler = GameProtocolHandler(self.net_client)
+        self.protocol_handler = None
         self.host_addr = (host_ip, host_port)
 
-        self.states = []
-
         self.is_listening = False
-        self.listener_thread = Thread(target=self.__listen_loop__())
+        self.listener_thread = Thread(target=self.__listen_loop__)
+        self.is_taking_input = False
+        self.input_thread = Thread(target=self.__user_input__)
+
+        # a buffer to hold the last input. Can be used by the game loop
+        self.input_buff = ""
 
         # initialize client by binding the socket
         if not self.net_client.bind_socket('', local_port):
             exit()
         print(f"Player client initialized. Will connect to {host_ip}:{host_port}")
 
-    # Network protocol related things
     def connect_to_host(self):
         """ Connects to the host client by sending a HANDSHAKE_REQUEST message.
             Also waits for a corresponding HANDSHAKE_RESPONSE message and
@@ -50,6 +52,7 @@ class Player:
             # Handle handshake response here
             if message_dict.get('message_type') == m.MessageType.HANDSHAKE_RESPONSE.value:
                 print("[PLAYER] Handshake successful!.")
+                self.protocol_handler = GameProtocolHandler(self.net_client)
 
                 seed = int(message_dict.get('seed', 0))
                 match_data = {'seed': seed}
@@ -57,7 +60,8 @@ class Player:
 
                 self.protocol_handler.set_opponent(self.host_addr, match_data, is_host=False)
                 # begin listening to prepare for battle setup
-                self.start_listening()
+                self.__start_listening__()
+                self.start_battle_setup()
                 return True
 
             else:
@@ -68,83 +72,80 @@ class Player:
             print(f"[PLAYER] Error during connection: {e}")
             return False
 
-    def battle_setup_send(self,
-                          mode: m.CommunicationMode,
-                          pokemon: str,
-                          stat_boosts: dict):
-        """ Sends a battle setup message an initializes the battle mode """
-
-        setup_msg = m.BattleSetupMessage(mode, pokemon, stat_boosts)
-        self.net_client.send_to(setup_msg, self.host_addr)
-
-        # TODO: call method in game protocol handler to update the match data
-        #       to add the data of this player to the match data
-
-        # self.protocol_handler.match_data["insert_joiner_ip"] = {
-        #     "pokemon_name" : pokemon,
-        #     "stat_boosts" : stat_boosts,
-        #     "data" :  # insert pokemon data here. Get from game protocol handler
-        # }
-
-        self.states.append("PLAYER_READY")
-        if "HOST_READY" in self.states:
-            self.battle_start()
-        else:
-            print("Player is ready! Waiting for host to start the battle.")
-            # NOTE: "Start the battle" just means for the other user to send
-            #       their own battle setup message
-
-    def battle_setup_receive(self,
-                             msg_dict: dict):
-        """ Called from the listening loop to initialize the data of
-        the opponent
+    # start battle setup
+    def start_battle_setup(self):
+        """ Called after establishing a connection to start setting up the
+            battle. Asks user for the name of the pokemon and the preferred
+            communication mode. After setup, it starts the game loop.
         """
+        # get pokemon data
+        self.protocol_handler._get_pokemon_db()
+        pokemon_db = self.protocol_handler._pokemon_db
+        # ask for pokemon from user
+        selected_pokemon = None
+        while selected_pokemon is None:
+            # Use title case: capitalized first letter of pokemon name
+            select_temp = input("Enter the name of your pokemon...").title()
+            if select_temp in pokemon_db.keys():
+                selected_pokemon = select_temp
+                continue
+            print("Invalid Pokemon name... please try again.")
 
-        # parse the string val of stat_boosts as dict
-        msg_dict["stat_boosts"] = literal_eval(msg_dict.get("stat_boosts"))
+        selected_mode = None
+        while selected_mode is None:
+            print("Please select your preferred mode of communication: ")
+            print("[1] P2P Mode")
+            print("[2] Broadcast Mode")
+            select_temp = input().strip()
+            if (select_temp == "1"):
+                selected_mode = m.CommunicationMode.P2P
+            elif (select_temp == "2"):
+                selected_mode = m.CommunicationMode.BROADCAST
 
-        # TODO: call method in game protocol handler to update the match data
-        #       to add the data of this player to the match data
+        stat_boosts = {
+            "special_attack_uses": 5,
+            "special_defense_uses": 5
+        }
 
-        # self.protocol_handler.match_data["insert_host_ip"] = {
-        #         "pokemon_name" : msg_dict.get("pokemon_name"),
-        #         "stat_boosts" : msg_dict.get("stat_boosts"),
-        #         "data":  # insert pokemon data here. Get from game protocol handler
-        # }
+        self.protocol_handler.start_battle_setup(pokemon_name=selected_pokemon,
+                                                 stat_boosts=stat_boosts,
+                                                 communication_mode=selected_mode)
 
-        self.states.append("HOST_READY")
-        if "PLAYER_READY" in self.states:
-            self.battle_start()
-        else:
-            print("Host is ready! Waiting for you to start the battle.")
-            # NOTE: "Start the battle" just means for the other user to send
-            #       their own battle setup message
+        # game loop is called here.
+        # the game loop becomes self-contained and will be responsible
+        self.start_game_loop()
 
-    def start_battle(self):
-        self.states = ["DEFENDING", "WAITING_FOR_TURN"]
-        print("[PLAYER] Battle has begun. Waiting for opponent to move.")
-        # no other setup needed. Now wait for messages
+    # game loop
+    def start_game_loop(self):
+        pass
+        while self.protocol_handler is not None:
+            # Player is attacking
+            if self.protocol_handler.current_turn_ip == self.protocol_handler.local_ip:
+                print("[PLAYER] It's your turn to attack!")
+                print("Enter name of move: ")
+                while self.input_buff == "":
+                    pass
+                move_name = self.input_buff
+                self.input_buff = ""
 
-    def defend_attack(self, ability: str):
-        # TODO: replace the placeholder sequence number here
-        def_msg = m.DefenseAnnounceMessage(1)
-        self.net_client.send_to(def_msg.as_text(), self.host_addr)
+                self.protocol_handler.send_attack_announce(move_name=move_name)
 
-        # do the calculations here
+            # Player is defending
+            else:
+                print("Waiting for opponent to attack...")
 
-        # send the calculation report
-        calc_report_msg = m.CalculationReportMessage(attacker=None,
-                                                     move_used=None,
-                                                     remaining_health=None,
-                                                     damage_dealt=None,
-                                                     defender_hp_remaining=None,
-                                                     status_message=None,
-                                                     sequence_number=1)
+            # check if attacker or defender
+            #   if attacker: send an attack
+            #   elif defender: wait for attack
 
-        self.net_client.send_to(calc_report_msg.as_text(), self.host_addr)
+            # after attacking/defending
+            #   perform calculations
+            #   send calculation report
+            #   receive calculation report
+            #   if discrepacny: 
+            pass
 
-
-    def start_listening(self):
+    def __start_listening__(self):
         """ Starts a thread that loops, listening for  This is called
             after the handshake to allow for listening for all messages
             afterwhich. Also allows for seemingly synchronous (not really)
@@ -157,7 +158,7 @@ class Player:
         self.listener_thread.start()
         self.is_listening = True
 
-    def stop_listening(self):
+    def __stop_listening__(self):
         """ Stops the thread that is listening for messages """
 
         if not self.is_listening:
@@ -165,6 +166,7 @@ class Player:
             return
 
         self.is_alive = False
+
 
     def __listen_loop__(self):
         """ Not to be called. Is only used as the method passed into the
@@ -176,14 +178,24 @@ class Player:
                 print(f"Received message from unknown sender {address}. Ignoring.")
                 continue
 
-            msg_dict = self.protocol_handler._parse_message(message_text)
-            mtype = msg_dict.get("message_type")
-            # switch here to handle what to do with the message
-            match mtype:
-                case m.MessageType.BATTLE_SETUP.value:
-                    self.battle_setup_receive(msg_dict)
-                case m.MessageType.ATTACK_ANNOUNCE:
-                    self.defend_attack(msg_dict.get("move_name"))
+            self.protocol_handler.process_message(message_text, address)
 
-            # self.protocol_handler.process_message(message_text, address)
+    def __user_input__(self):
+        while self.is_taking_input:
+            inp = input()
+            # process input here 
 
+    def __start_taking_input__(self):
+        if self.is_taking_input:
+            print("[PLAYER] Already taking input!")
+            return
+
+        self.input_thread.start()
+        self.is_taking_input = True
+
+    def __stop_taking_input__(self):
+        if not self.is_taking_input:
+            print("[PLAYER] Already not taking input!")
+            return
+
+        self.is_taking_input = False
