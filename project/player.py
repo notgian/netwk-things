@@ -8,7 +8,7 @@ from ast import literal_eval
 class Player:
     def __init__(self, host_ip, host_port, local_port):
         self.net_client = Client()
-        self.protocol_handler = None
+        self.protocol = None
         self.host_addr = (host_ip, host_port)
 
         self.is_listening = False
@@ -47,18 +47,18 @@ class Player:
                 print(f"[PLAYER] Received response from unexpected address {address}. Ignoring.")
                 return False
 
-            message_dict = self.protocol_handler._parse_message(message)
+            message_dict = self.protocol._parse_message(message)
 
             # Handle handshake response here
             if message_dict.get('message_type') == m.MessageType.HANDSHAKE_RESPONSE.value:
                 print("[PLAYER] Handshake successful!.")
-                self.protocol_handler = GameProtocolHandler(self.net_client)
+                self.protocol = GameProtocolHandler(self.net_client)
 
                 seed = int(message_dict.get('seed', 0))
                 match_data = {'seed': seed}
                 print(f"[PLAYER] Received seed: {seed}")
 
-                self.protocol_handler.set_opponent(self.host_addr, match_data, is_host=False)
+                self.protocol.set_opponent(self.host_addr, match_data, is_host=False)
                 # begin listening to prepare for battle setup
                 self.__start_listening__()
                 self.start_battle_setup()
@@ -79,8 +79,8 @@ class Player:
             communication mode. After setup, it starts the game loop.
         """
         # get pokemon data
-        self.protocol_handler._get_pokemon_db()
-        pokemon_db = self.protocol_handler._pokemon_db
+        self.protocol._get_pokemon_db()
+        pokemon_db = self.protocol._pokemon_db
         # ask for pokemon from user
         selected_pokemon = None
         while selected_pokemon is None:
@@ -107,7 +107,7 @@ class Player:
             "special_defense_uses": 5
         }
 
-        self.protocol_handler.start_battle_setup(pokemon_name=selected_pokemon,
+        self.protocol.start_battle_setup(pokemon_name=selected_pokemon,
                                                  stat_boosts=stat_boosts,
                                                  communication_mode=selected_mode)
 
@@ -117,22 +117,47 @@ class Player:
 
     # game loop
     def start_game_loop(self):
-        pass
-        while self.protocol_handler is not None:
+        """ Starts the main game loop. Assumes the battle setup
+            was run immediately before, making it so the game state
+            is at WAITING_FOR_MOVE from the start """
+
+        # input will be taken from the input buffer
+        self.__start_taking_input__()
+
+        # Termination condition: protocol is set to none
+        while self.protocol is not None:
+            # Game state at this point: WAITING_FOR_MOVE
+
             # Player is attacking
-            if self.protocol_handler.current_turn_ip == self.protocol_handler.local_ip:
+            if self.protocol.current_turn_ip == self.protocol_handler.local_ip:
                 print("[PLAYER] It's your turn to attack!")
                 print("Enter name of move: ")
                 while self.input_buff == "":
-                    pass
+                    pass  # Do nothing until we get an input
                 move_name = self.input_buff
                 self.input_buff = ""
 
-                self.protocol_handler.send_attack_announce(move_name=move_name)
+                self.protocol.send_attack_announce(move_name=move_name)
 
             # Player is defending
             else:
                 print("Waiting for opponent to attack...")
+                # I set the defense announce to just be sent right after
+                # handling an attack announce. AKA immediately send
+                # DEFENSE_ANNOUCE after getting attacked.
+
+            # Wait before proceeding to next part
+            while self.protocol.game_state == "WAITING_FOR_MOVE":
+                pass
+
+            # Game state at this point: PROCESSING TURN
+
+            # Perform calculations
+
+
+            # Send calculations
+            self.protocol.send_calculation_report()
+
 
             # check if attacker or defender
             #   if attacker: send an attack
@@ -178,7 +203,7 @@ class Player:
                 print(f"Received message from unknown sender {address}. Ignoring.")
                 continue
 
-            self.protocol_handler.process_message(message_text, address)
+            self.protocol.process_message(message_text, address)
 
     def __user_input__(self):
         while self.is_taking_input:
