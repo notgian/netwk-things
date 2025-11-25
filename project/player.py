@@ -1,87 +1,146 @@
+import messages as m
 from client import Client
-import messages
-import config
+from config import HANDSHAKE_TIMEOUT
 from protocol import GameProtocolHandler
+from threading import Thread
+from ast import literal_eval
 
 class Player:
-    def __init__(self, host_ip, host_port, local_port=0):
+    def __init__(self, host_ip, host_port, local_port):
         self.net_client = Client()
+        self.protocol_handler = GameProtocolHandler(self.net_client)
+        self.host_addr = (host_ip, host_port)
+
+        self.is_listening = False
+        self.listener_thread = Thread(target=self.__listen_loop__())
+
+        # initialize client by binding the socket
         if not self.net_client.bind_socket('', local_port):
             exit()
-
-        self.host_addr = (host_ip, host_port)
-        self.is_spectator = False
-
-        self.protocol_handler = GameProtocolHandler(self.net_client)
         print(f"Player client initialized. Will connect to {host_ip}:{host_port}")
 
-    def connect(self, as_spectator=False):
-        self.is_spectator = as_spectator
+    # Network protocol related things
+    def connect_to_host(self):
+        """ Connects to the host client by sending a HANDSHAKE_REQUEST message.
+            Also waits for a corresponding HANDSHAKE_RESPONSE message and
+            begins the initialization of the game.
 
-        if as_spectator:
-            request_msg = messages.SpectatorRequestMessage()
-            log_prefix = "[SPECTATOR]"
-        else:
-            request_msg = messages.HandshakeRequestMessage()
-            log_prefix = "[PLAYER]"
+            returns a boolean representing whether the connection was 
+            successful or not.
+        """
+        request_msg = m.HandshakeRequestMessage()
 
         try:
-            print(f"\n{log_prefix} Connecting to HOST...")
+            print("[PLAYER] Connecting to HOST...")
             self.net_client.send_to(request_msg.as_text(), self.host_addr)
 
-            timeout = config.HANDSHAKE_TIMEOUT
-            message_text, address = self.net_client.receive_from(timeout=timeout)
+            message, address = self.net_client.receive_from(timeout=HANDSHAKE_TIMEOUT)
 
-            if not message_text:
-                print(f"\n{log_prefix} Connection timed out. Host not found")
+            if not message:
+                print("[PLAYER] Connection timed out. Host not found")
                 return False
-
             if address != self.host_addr:
-                print(f"\n{log_prefix} Received response from unexpected address {address}. Ignoring.")
+                print(f"[PLAYER] Received response from unexpected address {address}. Ignoring.")
                 return False
 
-            message_dict = self.protocol_handler._parse_message(message_text)
-            if message_dict.get('message_type') == messages.MessageType.HANDSHAKE_RESPONSE:
-                print(f"{log_prefix} Handshake successful!.")
+            message_dict = self.protocol_handler._parse_message(message)
+
+            # Handle handshake response here
+            if message_dict.get('message_type') == m.MessageType.HANDSHAKE_RESPONSE.value:
+                print("[PLAYER] Handshake successful!.")
 
                 seed = int(message_dict.get('seed', 0))
                 match_data = {'seed': seed}
-                print(f"Received seed: {seed}")
+                print(f"[PLAYER] Received seed: {seed}")
 
                 self.protocol_handler.set_opponent(self.host_addr, match_data, is_host=False)
+                # begin listening to prepare for battle setup
+                self.start_listening()
                 return True
 
             else:
-                print(f"{log_prefix} Received unexpected message response {message_text}.")
+                print(f"[PLAYER] Received unexpected message response {message}.")
                 return False
+
         except Exception as e:
-            print(f"\n{log_prefix} Error during connection: {e}")
+            print(f"[PLAYER] Error during connection: {e}")
             return False
 
-    def run_game_loop(self):
-        if self.is_spectator:
-            self.run_spectator_loop()
-        else:
-            #elf.protocol_handler.start_battle_setup(pokemon_name="Charmander") # Example
+    def battle_setup_send(self,
+                          mode: m.CommunicationMode,
+                          pokemon: str,
+                          stat_boosts: dict):
+        """ Sends a battle setup message an initializes the battle mode """
 
-            self.run_player_loop()
+        setup_msg = m.BattleSetupMessage(mode, pokemon, stat_boosts)
+        self.net_client.send_to(setup_msg, self.host_addr)
 
-    def run_player_loop(self):
-        print("Waiting for messages from Host...")
-        while True:
+        # TODO: call method in game protocol handler to update the match data
+        #       to add the data of this player to the match data
+
+        # self.protocol_handler.match_data["insert_joiner_ip"] = {
+        #     "pokemon_name" : pokemon,
+        #     "stat_boosts" : stat_boosts,
+        #     "data" :  # insert pokemon data here. Get from game protocol handler
+        # }
+
+    def battle_setup_receive(self,
+                             msg_dict: dict):
+        """ Called from the listening loop to initialize the data of
+        the opponent
+        """
+
+        # parse the string val of stat_boosts as dict
+        msg_dict["stat_boosts"] = literal_eval(msg_dict.get("stat_boosts"))
+
+        # TODO: call method in game protocol handler to update the match data
+        #       to add the data of this player to the match data
+
+        # self.protocol_handler.match_data["insert_host_ip"] = {
+        #         "pokemon_name" : msg_dict.get("pokemon_name"),
+        #         "stat_boosts" : msg_dict.get("stat_boosts"),
+        #         "data":  # insert pokemon data here. Get from game protocol handler
+        # }
+
+
+    def start_listening(self):
+        """ Starts a thread that loops, listening for  This is called
+            after the handshake to allow for listening for all messages
+            afterwhich. Also allows for seemingly synchronous (not really)
+            handling of chat messages and game events.
+        """
+        if self.is_listening:
+            print("[PLAYER] Already listening!")
+            return
+
+        self.listener_thread.start()
+        self.is_listening = True
+
+    def stop_listening(self):
+        """ Stops the thread that is listening for messages """
+
+        if not self.is_listening:
+            print("[PLAYER] Already NOT listening!")
+            return
+
+        self.is_alive = False
+
+    def __listen_loop__(self):
+        """ Not to be called. Is only used as the method passed into the
+        thread """
+        while self.is_alive:
             message_text, address = self.net_client.receive_from()
 
-            if message_text and address == self.host_addr:
-                self.protocol_handler.process_message(message_text, address)
-
-            elif message_text:
+            if message_text and address != self.host_addr:
                 print(f"Received message from unknown sender {address}. Ignoring.")
+                continue
 
-    def run_spectator_loop(self):
-        print("\n--- Joined as Spectator. Now listening for all battle messages... ---")
-        while True:
-            message_text, address = self.net_client.receive_from()
-            if message_text and address == self.host_addr:
-                print(f"\n[SPECTATOR VIEW (from Host)]:\n{message_text}")
-            elif message_text:
-                print(f"Received message from unknown sender {address}. Ignoring.")
+            msg_dict = self.protocol_handler._parse_message(message_text)
+            mtype = msg_dict.get("message_type")
+            # switch here to handle what to do with the message
+            match mtype:
+                case m.MessageType.BATTLE_SETUP.value:
+                    self.battle_setup_receive(msg_dict)
+
+            # self.protocol_handler.process_message(message_text, address)
+

@@ -1,7 +1,7 @@
 import random
 from client import Client
 import messages
-from project.protocol import GameProtocolHandler
+from protocol import GameProtocolHandler
 
 
 class Host:
