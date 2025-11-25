@@ -7,7 +7,7 @@ import csv
 def load_pokemon_data():
     pokemon_dict = dict()
 
-    with open("./pokemon.csv") as f:
+    with open("./pokemon.csv", encoding="utf-8") as f:
         csv_file = csv.DictReader(f)
         for entry in csv_file:
             name = entry["name"]
