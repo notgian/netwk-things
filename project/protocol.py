@@ -26,7 +26,7 @@ class GameProtocolHandler:
         self.net_client = net_client
 
         # RFC 5.2 / 5.3: battle states
-        self.game_state = "CONNECTED" # CONNECTED -> SETUP -> WAITING_FOR_MOVE -> PROCESSING_TURN -> GAME_OVER
+        self.game_state = "CONNECTED"  # CONNECTED -> SETUP -> WAITING_FOR_MOVE -> PROCESSING_TURN -> GAME_OVER
 
         # RFC: shared battle state, keyed by IP strings plus a 'seed'
         # {
@@ -56,6 +56,16 @@ class GameProtocolHandler:
 
         # cache Pokémon CSV so we don't reload repeatedly
         self._pokemon_db = None
+
+        # -------- GAME-LOOP HOOKS (for Host/Player to read) --------
+        # Last announced attack (attacker_ip, move_name)
+        self.last_attack_announce = None
+        # Whether DEFENSE_ANNOUNCE has been seen for the current turn
+        self.last_defense_announce = False
+        # Last calculation report we received from the opponent
+        self.last_remote_calculation = None
+        # Last status_message received in a CALCULATION_REPORT (for printing)
+        self.last_received_status = None
 
     # -----------------------------
     #  UTILITY HELPERS
@@ -126,7 +136,6 @@ class GameProtocolHandler:
         stat_boosts: dict | None = None,
         communication_mode: CommunicationMode = CommunicationMode.P2P,
     ):
-
         self._ensure_local_identity()
 
         if stat_boosts is None:
@@ -147,7 +156,7 @@ class GameProtocolHandler:
         # Default to 100 if hp cannot be accessed.
         base_hp = int(base_stats.get("hp", 100))
 
-        # IP-keyed structure (Ganire??)
+        # IP-keyed structure
         self.match_data[self.local_ip] = {
             "pokemon_name": pokemon_name,
             "data": base_stats,
@@ -168,8 +177,36 @@ class GameProtocolHandler:
         )
         self._send_message(battle_setup_msg)
 
-        # Remain in SETUP state until we also receive opponent's BATTLE_SETUP.
-        # When both are known, we'll transition in _handle_battle_setup().
+        # After sending OUR setup, check if both sides are ready
+        self._check_battle_setup_complete()
+
+    # -----------------------------
+    #  CHECK IF BOTH SIDES FINISHED BATTLE_SETUP
+    # -----------------------------
+    def _check_battle_setup_complete(self):
+        """Called after sending or receiving BATTLE_SETUP.
+        Moves game into WAITING_FOR_MOVE when both sides are ready."""
+        self._ensure_local_identity()
+
+        opponent_ip = None
+        if self.opponent_addr:
+            opponent_ip = self.opponent_addr[0]
+
+        if (
+            opponent_ip
+            and opponent_ip in self.match_data
+            and self.local_ip in self.match_data
+        ):
+            print("[PROTOCOL] BATTLE_SETUP complete on both sides.")
+
+            # RFC 5.2: Host goes first
+            self.current_turn_ip = self.host_ip
+            self.game_state = "WAITING_FOR_MOVE"
+            print(
+                f"[PROTOCOL] STATE -> WAITING_FOR_MOVE. "
+                f"First turn: {self.current_turn_ip} "
+                f"({'HOST' if self.current_turn_ip == self.host_ip else 'JOINER'})"
+            )
 
     # -----------------------------
     #  MAIN MESSAGE ENTRYPOINT
@@ -226,12 +263,10 @@ class GameProtocolHandler:
     #  PROTOCOL 5.1: RELIABILITY
     # -----------------------------
     def _send_ack(self, sequence_number: int):
-
         ack_msg = AckReplyMessage(ack_number=sequence_number)
         self._send_message(ack_msg)
 
     def _handle_ack_reply(self, message_dict: dict, from_address: tuple):
-
         ack_num = message_dict.get("ack_number")
         print(f"[PROTOCOL] Received ACK for seq={ack_num} from {from_address}")
 
@@ -239,7 +274,6 @@ class GameProtocolHandler:
     #  PROTOCOL 4.4: BATTLE_SETUP (RECEIVE)
     # -----------------------------
     def _handle_battle_setup(self, message_dict: dict, from_address: tuple):
-
         self._ensure_local_identity()
 
         opponent_ip = from_address[0]
@@ -276,17 +310,8 @@ class GameProtocolHandler:
             f"pokemon={pokemon_name}, hp={base_hp}, boosts={stat_boosts}"
         )
 
-        # If both locals are ready, move into WAITING_FOR_MOVE
-        if self.local_ip in self.match_data and opponent_ip in self.match_data:
-            print("[PROTOCOL] BATTLE_SETUP complete on both sides.")
-            # RFC 5.2: Host goes first
-            self.current_turn_ip = self.host_ip
-            self.game_state = "WAITING_FOR_MOVE"
-            print(
-                f"[PROTOCOL] STATE -> WAITING_FOR_MOVE. "
-                f"First turn: {self.current_turn_ip} "
-                f"({'HOST' if self.current_turn_ip == self.host_ip else 'JOINER'})"
-            )
+        # Check after receiving opponent setup
+        self._check_battle_setup_complete()
 
     # -----------------------------
     #  PROTOCOL 4.5: ATTACK_ANNOUNCE
@@ -306,13 +331,24 @@ class GameProtocolHandler:
         msg = AttackAnnounceMessage(move_name=move_name, sequence_number=seq)
         self._send_message(msg)
 
+        # GAME-LOOP HOOK: record our own attack announce too (for local logic/UI)
+        self.last_attack_announce = {
+            "attacker_ip": self.local_ip,
+            "move_name": move_name,
+        }
+
         # After announcing, we wait for DEFENSE_ANNOUNCE & move to PROCESSING_TURN on receipt (RFC 5.2)
         print(f"[PROTOCOL] ATTACK_ANNOUNCE sent (move={move_name}, seq={seq}).")
 
     def _handle_attack_announce(self, message_dict: dict, from_address: tuple):
-
         move_name = message_dict.get("move_name", "UnknownMove")
         print(f"[PROTOCOL] Received ATTACK_ANNOUNCE from opponent: {move_name}")
+
+        # GAME-LOOP HOOK: store last attack from opponent
+        self.last_attack_announce = {
+            "attacker_ip": from_address[0],
+            "move_name": move_name,
+        }
 
         # The defender (us) should now respond with DEFENSE_ANNOUNCE when ready.
         # Actual UI logic (asking the user) is handled outside this class.
@@ -328,10 +364,14 @@ class GameProtocolHandler:
 
         # RFC 5.2 / 5.3: after defense announce, both peers move to PROCESSING_TURN
         self.game_state = "PROCESSING_TURN"
+        # GAME-LOOP HOOK
+        self.last_defense_announce = True
 
     def _handle_defense_announce(self, message_dict: dict, from_address: tuple):
         print(f"[PROTOCOL] Received DEFENSE_ANNOUNCE from {from_address}.")
         self.game_state = "PROCESSING_TURN"
+        # GAME-LOOP HOOK
+        self.last_defense_announce = True
 
     # -----------------------------
     #  PROTOCOL 4.7: CALCULATION_REPORT
@@ -345,6 +385,10 @@ class GameProtocolHandler:
         defender_hp_remaining: int,
         status_message: str,
     ):
+        """
+        NOTE: All of these values must be computed by the GAME LOGIC
+        (battleLogic + main loop). Handler only wraps & sends them.
+        """
 
         seq = self._next_seq()
         msg = CalculationReportMessage(
@@ -370,24 +414,40 @@ class GameProtocolHandler:
         print(f"[PROTOCOL] CALCULATION_REPORT sent (seq={seq}).")
 
     def _handle_calculation_report(self, message_dict: dict, from_address: tuple):
-
         print(f"[PROTOCOL] Received CALCULATION_REPORT from {from_address}.")
 
         # Extract opponent's values
+        try:
+            remaining_health = int(message_dict.get("remaining_health", 0))
+        except ValueError:
+            remaining_health = 0
+        try:
+            damage_dealt = int(message_dict.get("damage_dealt", 0))
+        except ValueError:
+            damage_dealt = 0
+        try:
+            defender_hp_remaining = int(message_dict.get("defender_hp_remaining", 0))
+        except ValueError:
+            defender_hp_remaining = 0
+
         opp_calc = {
             "attacker": message_dict.get("attacker"),
             "move_used": message_dict.get("move_used"),
-            "remaining_health": int(message_dict.get("remaining_health", 0)),
-            "damage_dealt": int(message_dict.get("damage_dealt", 0)),
-            "defender_hp_remaining": int(
-                message_dict.get("defender_hp_remaining", 0)
-            ),
+            "remaining_health": remaining_health,
+            "damage_dealt": damage_dealt,
+            "defender_hp_remaining": defender_hp_remaining,
         }
+
+        # GAME-LOOP HOOK: store remote calc + status message for UI
+        self.last_remote_calculation = opp_calc
+        self.last_received_status = message_dict.get("status_message", "")
 
         if not self.last_local_calculation:
             # If we haven't sent ours yet, just log; full reconciliation would require buffering both sides.
-            print("[PROTOCOL] No local calculation stored yet; cannot compare. "
-                  "Consider calling send_calculation_report() before expecting a comparison.")
+            print(
+                "[PROTOCOL] No local calculation stored yet; cannot compare. "
+                "Consider calling send_calculation_report() before expecting a comparison."
+            )
             return
 
         # Compare all main fields for equality
@@ -401,12 +461,20 @@ class GameProtocolHandler:
             # Turn over; reverse order and go back to WAITING_FOR_MOVE (RFC 5.3)
             self.game_state = "WAITING_FOR_MOVE"
             self.current_turn_ip = (
-                self.host_ip if self.current_turn_ip == self.joiner_ip else self.joiner_ip
+                self.host_ip
+                if self.current_turn_ip == self.joiner_ip
+                else self.joiner_ip
             )
             print(
                 f"[PROTOCOL] STATE -> WAITING_FOR_MOVE. "
                 f"Next turn: {self.current_turn_ip}"
             )
+
+            # Clean up for next turn
+            self.last_local_calculation = None
+            self.last_remote_calculation = None
+            self.last_defense_announce = False
+            self.last_attack_announce = None
         else:
             # Discrepancy → Send RESOLUTION_REQUEST first (RFC 5)
             print("[PROTOCOL] Calculation mismatch. Sending RESOLUTION_REQUEST.")
@@ -416,7 +484,9 @@ class GameProtocolHandler:
                 attacker=self.last_local_calculation["attacker"],
                 move_used=self.last_local_calculation["move_used"],
                 damage_dealt=self.last_local_calculation["damage_dealt"],
-                defender_hp_remaining=self.last_local_calculation["defender_hp_remaining"],
+                defender_hp_remaining=self.last_local_calculation[
+                    "defender_hp_remaining"
+                ],
                 sequence_number=seq,
             )
             self._send_message(req)
@@ -425,7 +495,6 @@ class GameProtocolHandler:
     #  PROTOCOL 4.8: CALCULATION_CONFIRM
     # -----------------------------
     def _handle_calculation_confirm(self, message_dict: dict, from_address: tuple):
-
         print(f"[PROTOCOL] Received CALCULATION_CONFIRM from {from_address}.")
         self.game_state = "WAITING_FOR_MOVE"
         self.current_turn_ip = (
@@ -436,11 +505,16 @@ class GameProtocolHandler:
             f"Next turn: {self.current_turn_ip}"
         )
 
+        # Clean up for next turn (mirror of success path)
+        self.last_local_calculation = None
+        self.last_remote_calculation = None
+        self.last_defense_announce = False
+        self.last_attack_announce = None
+
     # -----------------------------
     #  PROTOCOL 4.9: RESOLUTION_REQUEST
     # -----------------------------
     def _handle_resolution_request(self, message_dict: dict, from_address: tuple):
-
         print(f"[PROTOCOL] Received RESOLUTION_REQUEST from {from_address}.")
 
         # Extract the values peer believes are correct
@@ -450,7 +524,26 @@ class GameProtocolHandler:
             defender_hp_remaining = 0
 
         # This is Turn Processing State (RFC): If mismatch STILL happens → TERMINATE MATCH
-        local_hp = self.last_local_calculation["defender_hp_remaining"]
+        local_hp = (
+            self.last_local_calculation["defender_hp_remaining"]
+            if self.last_local_calculation
+            else None
+        )
+
+        if local_hp is None:
+            print(
+                "[PROTOCOL] No local calculation stored during RESOLUTION_REQUEST. "
+                "Cannot compare; terminating match for safety."
+            )
+            seq = self._next_seq()
+            msg = GameOverMessage(
+                winner="NONE",
+                loser="NONE",
+                sequence_number=seq,
+            )
+            self._send_message(msg)
+            self.game_state = "GAME_OVER"
+            return
 
         if defender_hp_remaining != local_hp:
             # TERMINATE MATCH — fundamental desync
@@ -462,7 +555,7 @@ class GameProtocolHandler:
             msg = GameOverMessage(
                 winner="NONE",
                 loser="NONE",
-                sequence_number=seq
+                sequence_number=seq,
             )
             self._send_message(msg)
 
@@ -474,7 +567,8 @@ class GameProtocolHandler:
         if opp_ip in self.match_data:
             self.match_data[opp_ip]["hp"] = defender_hp_remaining
             print(
-                f"[PROTOCOL] RESOLUTION_REQUEST accepted. Synced HP for {opp_ip} = {defender_hp_remaining}"
+                f"[PROTOCOL] RESOLUTION_REQUEST accepted. "
+                f"Synced HP for {opp_ip} = {defender_hp_remaining}"
             )
 
         # After successful reconciliation → proceed to next turn
@@ -487,11 +581,16 @@ class GameProtocolHandler:
             f"Next turn: {self.current_turn_ip}"
         )
 
+        # Clean up for next turn
+        self.last_local_calculation = None
+        self.last_remote_calculation = None
+        self.last_defense_announce = False
+        self.last_attack_announce = None
+
     # -----------------------------
     #  PROTOCOL 4.10: GAME_OVER
     # -----------------------------
     def send_game_over(self, winner: str, loser: str):
-
         seq = self._next_seq()
         msg = GameOverMessage(winner=winner, loser=loser, sequence_number=seq)
         self._send_message(msg)
@@ -500,7 +599,6 @@ class GameProtocolHandler:
         self.game_state = "GAME_OVER"
 
     def _handle_game_over(self, message_dict: dict, from_address: tuple):
-
         winner = message_dict.get("winner", "???")
         loser = message_dict.get("loser", "???")
         print(f"[PROTOCOL] GAME_OVER received. Winner={winner}, Loser={loser}")
@@ -510,7 +608,6 @@ class GameProtocolHandler:
     #  PROTOCOL 4.11: CHAT_MESSAGE
     # -----------------------------
     def send_chat_message(self, sender_name: str, content_type: ChatMessageType, content):
-
         seq = self._next_seq()
         msg = ChatMessage(
             sender_name=sender_name,
@@ -522,7 +619,6 @@ class GameProtocolHandler:
         print(f"[PROTOCOL] CHAT_MESSAGE sent (type={content_type}, seq={seq}).")
 
     def _handle_chat_message(self, message_dict: dict, from_address: tuple):
-
         sender = message_dict.get("sender_name", "Unknown")
         content_type = message_dict.get("content_type", "TEXT")
         if content_type == ChatMessageType.TEXT.value:
@@ -538,7 +634,6 @@ class GameProtocolHandler:
     #  MESSAGE PARSING
     # -----------------------------
     def _parse_message(self, message_text: str) -> dict:
-
         data = {}
         try:
             for line in message_text.split("\n"):
@@ -548,3 +643,53 @@ class GameProtocolHandler:
         except Exception as e:
             print(f"Error parsing message: {e}, Message: {message_text}")
         return data
+
+    # -----------------------------
+    #  GAME-LOOP HELPER METHODS
+    # -----------------------------
+    def get_match_data(self) -> dict:
+        """Return the entire match_data dict (for game logic / UI)."""
+        return self.match_data
+
+    def get_local_ip(self) -> str | None:
+        """Return our local IP (ensuring it's initialized)."""
+        self._ensure_local_identity()
+        return self.local_ip
+
+    def get_host_ip(self) -> str | None:
+        return self.host_ip
+
+    def get_joiner_ip(self) -> str | None:
+        return self.joiner_ip
+
+    def get_current_turn_ip(self) -> str | None:
+        """Whose turn is it currently (IP string)."""
+        return self.current_turn_ip
+
+    def is_my_turn(self) -> bool:
+        """Convenience: True if it's our turn to ATTACK_ANNOUNCE."""
+        self._ensure_local_identity()
+        return self.current_turn_ip == self.local_ip
+
+    def get_opponent_ip(self) -> str | None:
+        """Return only the opponent's IP address (no port)."""
+        return self.opponent_addr[0] if self.opponent_addr else None
+
+    def get_hp(self, ip: str) -> int | None:
+        """Get current HP for a given IP."""
+        data = self.match_data.get(ip)
+        if not data:
+            return None
+        return data.get("hp")
+
+    def set_hp(self, ip: str, new_hp: int):
+        """Set HP for a given IP (game logic should call this after damage calc)."""
+        if ip in self.match_data:
+            self.match_data[ip]["hp"] = max(0, int(new_hp))
+
+    def clear_turn_flags(self):
+        """Reset per-turn hooks (optional, if game loop wants manual control)."""
+        self.last_attack_announce = None
+        self.last_defense_announce = False
+        self.last_remote_calculation = None
+        self.last_received_status = None
