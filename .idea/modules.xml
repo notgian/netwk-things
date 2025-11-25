@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/CSNETWK.iml" filepath="$PROJECT_DIR$/.idea/CSNETWK.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/netwk-things.iml" filepath="$PROJECT_DIR$/.idea/netwk-things.iml" />
     </modules>
   </component>
 </project>
