@@ -11,6 +11,8 @@ class Player:
         self.protocol_handler = GameProtocolHandler(self.net_client)
         self.host_addr = (host_ip, host_port)
 
+        self.states = []
+
         self.is_listening = False
         self.listener_thread = Thread(target=self.__listen_loop__())
 
@@ -84,6 +86,14 @@ class Player:
         #     "data" :  # insert pokemon data here. Get from game protocol handler
         # }
 
+        self.states.append("PLAYER_READY")
+        if "HOST_READY" in self.states:
+            self.battle_start()
+        else:
+            print("Player is ready! Waiting for host to start the battle.")
+            # NOTE: "Start the battle" just means for the other user to send
+            #       their own battle setup message
+
     def battle_setup_receive(self,
                              msg_dict: dict):
         """ Called from the listening loop to initialize the data of
@@ -101,6 +111,37 @@ class Player:
         #         "stat_boosts" : msg_dict.get("stat_boosts"),
         #         "data":  # insert pokemon data here. Get from game protocol handler
         # }
+
+        self.states.append("HOST_READY")
+        if "PLAYER_READY" in self.states:
+            self.battle_start()
+        else:
+            print("Host is ready! Waiting for you to start the battle.")
+            # NOTE: "Start the battle" just means for the other user to send
+            #       their own battle setup message
+
+    def start_battle(self):
+        self.states = ["DEFENDING", "WAITING_FOR_TURN"]
+        print("[PLAYER] Battle has begun. Waiting for opponent to move.")
+        # no other setup needed. Now wait for messages
+
+    def defend_attack(self, ability: str):
+        # TODO: replace the placeholder sequence number here
+        def_msg = m.DefenseAnnounceMessage(1)
+        self.net_client.send_to(def_msg.as_text(), self.host_addr)
+
+        # do the calculations here
+
+        # send the calculation report
+        calc_report_msg = m.CalculationReportMessage(attacker=None,
+                                                     move_used=None,
+                                                     remaining_health=None,
+                                                     damage_dealt=None,
+                                                     defender_hp_remaining=None,
+                                                     status_message=None,
+                                                     sequence_number=1)
+
+        self.net_client.send_to(calc_report_msg.as_text(), self.host_addr)
 
 
     def start_listening(self):
@@ -141,6 +182,8 @@ class Player:
             match mtype:
                 case m.MessageType.BATTLE_SETUP.value:
                     self.battle_setup_receive(msg_dict)
+                case m.MessageType.ATTACK_ANNOUNCE:
+                    self.defend_attack(msg_dict.get("move_name"))
 
             # self.protocol_handler.process_message(message_text, address)
 
