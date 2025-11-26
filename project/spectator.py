@@ -15,6 +15,7 @@ class Spectator:
         self.listener_thread = Thread(target=self.__listen_loop__)
         self.is_taking_input = False
         self.input_thread = Thread(target=self.__user_input__)
+        self.should_quit = False
 
         self.input_buff = ""
 
@@ -72,14 +73,24 @@ class Spectator:
     # ===== Spectator Loop =====
     def start_spectator_loop(self):
         """Called after establishing a connection. Main loop: Listen for all battle m broadcasted by Host."""
-        print("\n[SPECTATOR] Joined as Spectator. Now listening for battle messages ---")
-
+        print("\n[SPECTATOR] Joined as Spectator. Now listening for battle messages")
+        print("[SPECTATOR] Type chat messages freely.")
+        print("[SPECTATOR] Type 'quit' or 'exit' to disconnect.\n")
         # Enable input thread (can be used for chat later)
         self.__start_taking_input__()
 
         # Keep main thread alive while listening
-        while self.is_listening:
+        while self.is_listening and not self.should_quit:
             pass
+
+        self.cleanup()
+
+    def cleanup(self):
+        """Stops the thread that is listening for messages """
+        print("[SPECTATOR] Disconnecting...")
+        self.__stop_listening__()
+        self.__stop_taking_input__()
+        self.net_client.close()
 
     def __start_listening__(self):
         """ Starts a thread that loops, listening for  This is called
@@ -91,7 +102,6 @@ class Spectator:
         if self.is_listening:
             print("[SPECTATOR] Already listening!")
             return
-
         self.listener_thread.start()
         self.is_listening = True
 
@@ -102,7 +112,7 @@ class Spectator:
             print("[SPECTATOR] Already NOT listening!")
             return
 
-        self.is_alive = False
+        self.is_listening = False
 
     def __listen_loop__(self):
         """ Thread method: continously recives messages from the Host"""
@@ -126,9 +136,16 @@ class Spectator:
         while self.is_listening:
             try:
                 inp = input()
-                #TODO: Chat functionality
 
-                #if inp: self.protocol.send_chat_message Note to self
+                if inp.lower() in ['quit', 'exit']:
+                    self.should_quit = True
+                    self.is_listening = False
+                    self.is_taking_input = False
+                    break
+
+
+                if self.protocol:
+                    self.protocol.send_chat_message("SPECTATOR", m.ChatMessageType.TEXT, inp)
             except EOFError:
                 break
 
