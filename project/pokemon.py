@@ -47,3 +47,16 @@ def load_pokemon_data():
                         pokemon_dict[name][key] = 0.0
 
     return pokemon_dict
+
+
+def print_pokemon_paginated(pokemon_names, page_size=10):
+    total = len(pokemon_names)
+    index = 0
+
+    while index < total:
+        end = min(index + page_size, total)
+        for i in range(index, end):
+            print(f"{i+1:03d}. {pokemon_names[i]}")
+        if end < total:
+            input(f"\n-- Showing {index+1}-{end} of {total}. Press ENTER for next page... --\n")
+        index = end
