@@ -77,52 +77,54 @@ class Host:
         print("\n[HOST] Waiting for player connection...")
 
         while True:
-            message_text, address = self.net_client.receive_from()
+            try: 
+                message_text, address = self.net_client.receive_from()
 
-            # No message
-            if not message_text:
-                continue
+                # No message
+                if not message_text:
+                    continue
 
-            # Existing player
-            if address == self.player_opponent_addr:
-                self.handle_player_message(message_text)
+                # Existing player
+                if address == self.player_opponent_addr:
+                    self.handle_player_message(message_text)
 
-            # Existing spectator
-            elif address in self.spectator_addrs:
-                self.handle_spectator_message(message_text)
+                # Existing spectator
+                elif address in self.spectator_addrs:
+                    self.handle_spectator_message(message_text)
 
-            # New connection
-            else:
-                self.handle_new_connection(message_text, address)
+                # New connection
+                else:
+                    self.handle_new_connection(message_text, address)
 
-            # ---------------------------------------------------------
-            # GAME STATE HANDLING (BATTLE LOGIC)
-            # ---------------------------------------------------------
+                # ---------------------------------------------------------
+                # GAME STATE HANDLING (BATTLE LOGIC)
+                # ---------------------------------------------------------
 
-            # =========== BATTLE SETUP ===========
-            if self.protocol_handler.game_state == "SETUP":
-                self.handle_setup_phase()
+                state = self.protocol_handler.game_state
 
-            # =========== TURN: HOST ATTACKS ===========
-            if self.protocol_handler.game_state == "WAITING_FOR_MOVE":
-                if self.protocol_handler.is_my_turn():
-                    self.handle_my_turn()
+                # =========== BATTLE SETUP ===========
+                if state == "SETUP":
+                    self.handle_setup_phase()
 
-            # =========== TURN: HOST DEFENDS ===========
-            if (
-                self.protocol_handler.game_state == "WAITING_FOR_MOVE"
-                or self.protocol_handler.game_state == "PROCESSING_TURN"
-            ):
-                self.handle_defense_phase()
+                # =========== TURN: HOST ATTACKS/DEFENDS ===========
+                elif state == "WAITING_FOR_MOVE":
+                    if self.protocol_handler.is_my_turn():
+                        self.handle_my_turn()
+                    else:
+                        self.handle_defense_phase()
 
-            # =========== DAMAGE CALCULATION ===========
-            if self.protocol_handler.game_state == "PROCESSING_TURN":
-                self.handle_damage_resolution()
+                # =========== DAMAGE CALCULATION ===========
+                elif state == "PROCESSING_TURN":
+                    self.handle_defense_phase()
+                    self.handle_damage_resolution()
 
-            # =========== GAME OVER ===========
-            if self.protocol_handler.game_state == "GAME_OVER":
-                print("\n[HOST] GAME OVER detected. Closing host session.")
-                break
+                # =========== GAME OVER ===========
+                elif state == "GAME_OVER":
+                    print("\n[HOST] GAME OVER detected. Closing host session.")
+                    break
+                
+            except Exception as e:
+                print(f"[HOST] Error: {e}")
 
     # =====================================================
     # SETUP PHASE
