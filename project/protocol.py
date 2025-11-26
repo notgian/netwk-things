@@ -44,7 +44,7 @@ class GameProtocolHandler:
         self.joiner_ip = None
 
         # communication mode (P2P / BROADCAST – RFC 3 & 4.4)
-        self.communication_mode = CommunicationMode.P2P
+        self.communication_mode = None
 
         # RFC 5.1: reliability layer — sequence numbers
         self.next_sequence_number = 1
@@ -207,6 +207,8 @@ class GameProtocolHandler:
                 f"First turn: {self.current_turn_ip} "
                 f"({'HOST' if self.current_turn_ip == self.host_ip else 'JOINER'})"
             )
+            return True
+        return False
 
     # -----------------------------
     #  MAIN MESSAGE ENTRYPOINT
@@ -304,6 +306,15 @@ class GameProtocolHandler:
             "hp": base_hp,
             "stat_boosts": stat_boosts,
         }
+        # overwrite the communication_mode with the host's chosen mode
+        msg_cmode = message_dict["communication_mode"]
+        if (self.joiner_ip == self.local_ip):
+            if self.communication_mode is not None:
+                print(f"Host chose a different communication mode. Setting to {msg_cmode}")
+            if msg_cmode == messages.CommunicationMode.BROADCAST.value:
+                self.communication_mode = messages.CommunicationMode.BROADCAST
+            elif msg_cmode == messages.CommunicationMode.P2P.value:
+                self.communication_mode = messages.CommunicationMode.P2P
 
         print(
             f"[PROTOCOL] Opponent BATTLE_SETUP: ip={opponent_ip}, "
@@ -413,6 +424,11 @@ class GameProtocolHandler:
         self._send_message(msg)
         print(f"[PROTOCOL] CALCULATION_REPORT sent (seq={seq}).")
 
+        while not (self.last_local_calculation and self.last_remote_calculation):
+            pass
+
+        self._handle_calculation_resolution()
+
     def _handle_calculation_report(self, message_dict: dict, from_address: tuple):
         print(f"[PROTOCOL] Received CALCULATION_REPORT from {from_address}.")
 
@@ -442,29 +458,15 @@ class GameProtocolHandler:
         self.last_remote_calculation = opp_calc
         self.last_received_status = message_dict.get("status_message", "")
 
-        if not self.last_local_calculation:
-            # If we haven't sent ours yet, just log; full reconciliation would require buffering both sides.
-            print(
-                "[PROTOCOL] No local calculation stored yet; cannot compare. "
-                "Consider calling send_calculation_report() before expecting a comparison."
-            )
-            return
+    def _handle_calculation_resolution(self):
 
-        # Compare all main fields for equality
-        if opp_calc == self.last_local_calculation:
+        if self.last_remote_calculation == self.last_local_calculation:
             # All good – send CALCULATION_CONFIRM
             print("[PROTOCOL] Calculation matches. Sending CALCULATION_CONFIRM.")
             seq = self._next_seq()
             confirm = CalculationConfirmMessage(sequence_number=seq)
             self._send_message(confirm)
 
-            # Turn over; reverse order and go back to WAITING_FOR_MOVE (RFC 5.3)
-            self.game_state = "WAITING_FOR_MOVE"
-            self.current_turn_ip = (
-                self.host_ip
-                if self.current_turn_ip == self.joiner_ip
-                else self.joiner_ip
-            )
             print(
                 f"[PROTOCOL] STATE -> WAITING_FOR_MOVE. "
                 f"Next turn: {self.current_turn_ip}"
@@ -497,9 +499,8 @@ class GameProtocolHandler:
     def _handle_calculation_confirm(self, message_dict: dict, from_address: tuple):
         print(f"[PROTOCOL] Received CALCULATION_CONFIRM from {from_address}.")
         self.game_state = "WAITING_FOR_MOVE"
-        self.current_turn_ip = (
-            self.host_ip if self.current_turn_ip == self.joiner_ip else self.joiner_ip
-        )
+        self.current_turn_ip = self.host_ip if self.current_turn_ip == self.joiner_ip else self.joiner_ip
+
         print(
             f"[PROTOCOL] STATE -> WAITING_FOR_MOVE. "
             f"Next turn: {self.current_turn_ip}"

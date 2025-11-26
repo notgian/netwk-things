@@ -137,6 +137,7 @@ class Player:
         protocol = self.protocol_handler
 
         while self.game_running:
+
             # SETUP PHASE
             if protocol.game_state == "SETUP":
                 self.handle_setup_phase()
@@ -147,15 +148,11 @@ class Player:
             elif protocol.game_state == "WAITING_FOR_MOVE":
                 if protocol.is_my_turn():
                     self.handle_my_turn()
-                    while protocol.game_state == "WAITING_FOR_MOVE":
-                        pass
                 else:
                     self.handle_defense_phase()
 
             elif protocol.game_state == "PROCESSING_TURN":
                 self.handle_damage_resolution()
-                while protocol.game_state == "PROCESSING_TURN":
-                    pass  # wait until game exists setup stage
 
             elif protocol.game_state == "GAME_OVER":
                 print("\n=== GAME OVER ===")

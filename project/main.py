@@ -43,6 +43,7 @@ if __name__ == "__main__":
     if choice == 'H':
         host = Host(my_ip, config.DEFAULT_PORT)
         print("\n[MAIN] Host mode started. Waiting for connections...")
+        host.joiner_listen()
         host.run_host_loop()  # This loop runs indefinitely
 
     # ---------------------------------------------------------
