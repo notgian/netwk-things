@@ -6,7 +6,7 @@ from threading import Thread
 from ast import literal_eval
 
 class Spectator:
-    def __init__(self, host_ip, host_port, local_port=0):
+    def __init__(self, host_ip, host_port, local_ip, local_port=0):
         self.net_client = Client()
         self.protocol = None
         self.host_ip = (host_ip, host_port)
@@ -19,7 +19,7 @@ class Spectator:
 
         self.input_buff = ""
 
-        if not self.net_client.bind_socket('', local_port):
+        if not self.net_client.bind_socket(local_ip, local_port):
             exit()
         print(f"Spectator client initialized. Will connect to {host_ip}:{host_port}")
 
@@ -76,6 +76,7 @@ class Spectator:
         print("\n[SPECTATOR] Joined as Spectator. Now listening for battle messages")
         print("[SPECTATOR] Type chat messages freely.")
         print("[SPECTATOR] Type 'quit' or 'exit' to disconnect.\n")
+
         # Enable input thread (can be used for chat later)
         self.__start_taking_input__()
 
@@ -117,19 +118,25 @@ class Spectator:
     def __listen_loop__(self):
         """ Thread method: continously recives messages from the Host"""
 
+        print(" ", flush=True)
+
         while self.is_listening:
-            message, address = self.net_client.receive_from()
+            try:
+                message, address = self.net_client.receive_from()
 
-            if not message:
-                continue
+                if not message:
+                    continue
 
-            if address == self.host_ip:
-                print(f"\n[SPECTATOR]: \n{message}")
-
-                # Update the internal state of the game -> (comment ko lng muna)
-                # self.protocol.process_message(message_text, address)
-            else:
-                print(f"\n[SPECTATOR] Received message from unexpected sender {address}.")
+                if address == self.host_ip:
+                    # FORCE FLUSH TO CONSOLE
+                    print(f"\n[SPECTATOR RECEIVED]: \n{message}\n")
+                    if self.protocol:
+                        self.protocol.process_message(message, address)
+                else:
+                    print(f"\n[SPECTATOR] Received message from unexpected sender {address}.")
+            except Exception as e:
+                print(f"[SPECTATOR ERROR] Listener thread crash: {e}")
+                break
 
     def __user_input__(self):
         """ Thread method: handles user input (only for chat) """
@@ -145,7 +152,7 @@ class Spectator:
 
 
                 if self.protocol:
-                    self.protocol.send_chat_message("SPECTATOR", m.ChatMessageType.TEXT, inp)
+                    self.protocol.send_chat_message(self.net_client, m.ChatMessageType.TEXT, inp)
             except EOFError:
                 break
 
