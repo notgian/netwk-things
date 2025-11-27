@@ -2,9 +2,8 @@ import messages as msg
 import socket
 from host import Host
 from player import Player
-import config
 from spectator import Spectator
-
+import config
 
 def get_my_ip():
     """Attempts to get the local network IP. Falls back to localhost."""
@@ -56,8 +55,9 @@ if __name__ == "__main__":
             host_ip_check = input("Is the host running on this same machine? (Y/N): ").strip().upper()
             host_ip = '127.0.0.1' if host_ip_check == 'Y' else my_ip
 
-        player = Player(host_ip, config.DEFAULT_PORT, local_port=0)
-        player.connect_to_host()
+        player = Player(host_ip, config.DEFAULT_PORT,local_ip=my_ip, local_port=0)
+        player.connect()
+        player.run_game_loop()
 
     elif choice == 'S':
         host_ip = input(f"Enter Host IP (leave blank for {my_ip}): ").strip()
@@ -66,8 +66,7 @@ if __name__ == "__main__":
             host_ip_check = input("Is the host running on this same machine? (Y/N): ").strip().upper()
             host_ip = '127.0.0.1' if host_ip_check == 'Y' else my_ip
 
-        spectator = Spectator(host_ip, config.DEFAULT_PORT, local_port=0)
+        spectator = Spectator(host_ip, config.DEFAULT_PORT,local_ip=my_ip, local_port=0)
         spectator.connect_to_host()
-
     else:
         print("Invalid mode selected. Exiting.")
