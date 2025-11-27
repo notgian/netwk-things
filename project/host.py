@@ -7,63 +7,6 @@ import battleLogic
 from threading import Thread
 import config
 
-
-# ---------------------------------------------------------
-# Helper UI functions for Host
-# ---------------------------------------------------------
-
-def choose_pokemon(pokemon_db):
-    """Simple CLI Pokémon selection menu."""
-    names = list(pokemon_db.keys())
-    print("\n=== Choose Your Pokémon ===")
-    for i, name in enumerate(names):
-        print(f"{i+1}. {name}")
-
-    while True:
-        choice = input("Enter Pokémon name or number: ").strip()
-        if choice.isdigit():
-            idx = int(choice) - 1
-            if 0 <= idx < len(names):
-                return names[idx]
-
-        for n in names:
-            if n.lower() == choice.lower():
-                return n
-
-        print("Invalid Pokémon. Try again.")
-
-def choose_stat_boosts():
-    """Ask user for RFC-allowed stat boosts."""
-    print("\n=== Stat Boost Allocation ===")
-    while True:
-        try:
-            sa = int(input("Special Attack Boost Uses (0–5): "))
-            sd = int(input("Special Defense Boost Uses (0–5): "))
-            if 0 <= sa <= 5 and 0 <= sd <= 5:
-                return {
-                    "special_attack_uses": sa,
-                    "special_defense_uses": sd,
-                }
-        except ValueError:
-            pass
-        print("Invalid input. Enter numbers between 0 and 5.")
-
-def choose_communication_mode():
-    print("\n=== Communication Mode===")
-    while True:
-        print("Select communication mode")
-        print("1. P2P Mode")
-        print("2. Broadcast Mode")
-
-        inp = input()
-        if (inp == "1"):
-            return messages.CommunicationMode.P2P
-        elif (inp == "2"):
-            return messages.CommunicationMode.BROADCAST
-        else:
-            print("Please try again...")
-
-
 # ---------------------------------------------------------
 # HOST CLASS
 # ---------------------------------------------------------
@@ -170,9 +113,9 @@ class Host:
         pokemon_db = load_pokemon_data()
 
         print("\n[PLAYER] === BATTLE SETUP ===")
-        pokemon_name = choose_pokemon(pokemon_db)
-        boosts = choose_stat_boosts()
-        comm_mode = choose_communication_mode()
+        pokemon_name = battleLogic.choose_pokemon(pokemon_db)
+        boosts = battleLogic.choose_stat_boosts()
+        comm_mode = battleLogic.choose_communication_mode()
 
         protocol.start_battle_setup(pokemon_name, boosts, comm_mode)
 

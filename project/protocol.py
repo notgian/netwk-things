@@ -76,6 +76,7 @@ class GameProtocolHandler:
                 self.local_ip = self.net_client.sock.getsockname()[0]
             except Exception:
                 # fallback if something weird happens
+                print("????")
                 self.local_ip = "0.0.0.0"
 
     def _next_seq(self) -> int:

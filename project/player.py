@@ -1,66 +1,12 @@
 from client import Client
 import messages
 import config
+import os
 from protocol import GameProtocolHandler
 from pokemon import load_pokemon_data
 import battleLogic
 from threading import Thread
-
-
-# ---------------------------------------------------------
-# Helper functions (same as Host)
-# ---------------------------------------------------------
-
-def choose_pokemon(pokemon_db):
-    """Simple CLI Pokémon selection menu."""
-    names = list(pokemon_db.keys())
-    print("\n=== Choose Your Pokémon ===")
-    for i, name in enumerate(names):
-        print(f"{i+1}. {name}")
-
-    while True:
-        choice = input("Enter Pokémon name or number: ").strip()
-        if choice.isdigit():
-            idx = int(choice) - 1
-            if 0 <= idx < len(names):
-                return names[idx]
-
-        for n in names:
-            if n.lower() == choice.lower():
-                return n
-
-        print("Invalid Pokémon. Try again.")
-
-def choose_stat_boosts():
-    """Ask user for RFC-allowed stat boosts."""
-    print("\n=== Stat Boost Allocation ===")
-    while True:
-        try:
-            sa = int(input("Special Attack Boost Uses (0–5): "))
-            sd = int(input("Special Defense Boost Uses (0–5): "))
-            if 0 <= sa <= 5 and 0 <= sd <= 5:
-                return {
-                    "special_attack_uses": sa,
-                    "special_defense_uses": sd,
-                }
-        except ValueError:
-            pass
-        print("Invalid input. Enter numbers between 0 and 5.")
-
-def choose_communication_mode():
-    print("\n=== Communication Mode===")
-    while True:
-        print("Select communication mode")
-        print("1. P2P Mode")
-        print("2. Broadcast Mode")
-
-        inp = input()
-        if (inp == "1"):
-            return messages.CommunicationMode.P2P
-        elif (inp == "2"):
-            return messages.CommunicationMode.BROADCAST
-        else:
-            print("Please try again...")
+from async_input import AsyncInput
 
 # ---------------------------------------------------------
 # PLAYER CLASS
@@ -77,14 +23,7 @@ class Player:
         self.is_listening = False
         self.listener_thread = Thread(target=self.__listener__)
 
-        # input buffers
-        # 0 - default input buffer
-        # 1 - for most input methods
-        # 2 - for chat related functions
-        self.input_buff = ["", "", ""]
-
-        self.taking_input = False
-        self.input_thread = Thread(target=self.__take_input__)
+        self.asyncInput = AsyncInput(self.__process_command__)
 
         self.protocol_handler = GameProtocolHandler(self.net_client)
 
@@ -123,6 +62,7 @@ class Player:
 
                 self.protocol_handler.set_opponent(self.host_addr, match_data, is_host=False)
                 self.__start_listening__()
+                self.asyncInput.start()
                 return True
 
             else:
@@ -176,9 +116,9 @@ class Player:
         pokemon_db = load_pokemon_data()
 
         print("\n[PLAYER] === BATTLE SETUP ===")
-        pokemon_name = choose_pokemon(pokemon_db)
-        boosts = choose_stat_boosts()
-        comm_mode = choose_communication_mode()
+        pokemon_name = battleLogic.choose_pokemon(pokemon_db)
+        boosts = battleLogic.choose_stat_boosts()
+        comm_mode = battleLogic.choose_communication_mode()
 
         protocol.start_battle_setup(pokemon_name, boosts, comm_mode)
 
@@ -189,7 +129,7 @@ class Player:
         protocol = self.protocol_handler
         print("\n=== YOUR TURN (PLAYER) ===")
         print("Available moves: Tackle, Quick Attack, Ember, Water Gun, Vine Whip")
-        move = input("Choose move: ").strip()
+        move = self.asyncInput.awaitInput("Choose move: ").strip()
 
         protocol.send_attack_announce(move)
 
@@ -289,25 +229,41 @@ class Player:
             elif message_text:
                 print(f"Received message from unknown sender {address}. Ignoring.")
 
-    def __start_taking_input__(self):
-        if self.taking_input:
-            print("[WARN] Already taking input")
-            return
+    def __process_command__(self, text:str):
+        """ Processes the text, attepting to detect the command prefix (/)
+            and executing the necessary user action based on this
+        """
+        text = text.strip()
+        prefix = text[0]
+        tokenized_text = text.split(" ")
+        if prefix != "/":
+            return False
 
-        self.taking_input = True
-        self.input_thread.start()
+        # Chat message that sends text
+        # syntax: /message all message text follows here
+        if tokenized_text[0][1:] == "message":
+            message = text[len("/message "):]
+            self.protocol_handler.send_chat_message(sender_name=self.protocol_handler.local_ip, 
+                                                    content_type=messages.ChatMessageType.TEXT, 
+                                                    content=message)
 
-    def __stop_taking_input__(self):
-        if not self.taking_input:
-            print("[WARN] Already not taking input")
-            return
+        # Chat message that sends a sticker
+        # syntax: /sticker sticker_filename
+        elif tokenized_text[0][1:] == "sticker":
+            filename = tokenized_text[1]
 
-        self.taking_input = False
+            sticker_path_exists = os.path.isdir("stickers")
+            if not sticker_path_exists:
+                os.mkdir("stickers")
+                print("[COMMAND] There are no stickers in the directory... please try again.")
+                return True
 
-    def __take_input__(self):
-        """ Takes user input and stores it into a buffer """
+            sticker_exists = os.path.isfile(f"stickers/{filename}")
+            if not sticker_exists:
+                print(f"[COMMAND] No stickers named f{filename} found... please try again.")
+                return True
 
-        while self.taking_input:
-            inp = input()
+        else:
+            print(f"[COMMAND] Unknown command {tokenized_text[0]} was run.")
 
-            self.input_buff[0] = inp
+        return True
