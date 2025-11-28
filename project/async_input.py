@@ -33,6 +33,7 @@ class AsyncInput:
             print("[ERROR] Cannot await input because input thread is not running!")
             return None
         self.flush()
+        print(message)
         while self.input_buff == "":
             pass
 
@@ -78,7 +79,6 @@ class AsyncInput:
         print("STARTED")
         while self.taking_input:
             inp = input().strip()
-            print(">>>", inp)
             if intermediate_callback is not None:
                 res = intermediate_callback(inp)
                 self.input_buff = "" if res else inp

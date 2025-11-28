@@ -1,10 +1,12 @@
 import random
-from client import Client
+import os
 import messages
+import battleLogic
+from client import Client
 from protocol import GameProtocolHandler
 from pokemon import load_pokemon_data
-import battleLogic
 from threading import Thread
+from async_input import AsyncInput
 import config
 
 # ---------------------------------------------------------
@@ -25,20 +27,12 @@ class Host:
         self.player_opponent_addr = None
         self.spectator_addrs = []
 
-        self.protocol_handler = GameProtocolHandler(self.net_client)
         print(f"[HOST] Host Client running at {host_ip}:{port}")
 
         self.is_listening = False
         self.listener_thread = Thread(target=self.__listener__)
 
-        # input buffers
-        # 0 - default input buffer
-        # 1 - for most input methods
-        # 2 - for chat related functions
-        self.input_buff = ["", "", ""]
-
-        self.taking_input = False
-        self.input_thread = Thread(target=self.__take_input__)
+        self.asyncInput = AsyncInput(self.__process_command__)
 
         self.protocol_handler = GameProtocolHandler(self.net_client)
 
@@ -62,6 +56,7 @@ class Host:
             if msg_type == messages.MessageType.HANDSHAKE_REQUEST.value:
                 self.handle_player_join(address)
                 self.__start_listening__()
+                self.asyncInput.start()
                 connected=True
 
             else:
@@ -113,9 +108,9 @@ class Host:
         pokemon_db = load_pokemon_data()
 
         print("\n[PLAYER] === BATTLE SETUP ===")
-        pokemon_name = battleLogic.choose_pokemon(pokemon_db)
-        boosts = battleLogic.choose_stat_boosts()
-        comm_mode = battleLogic.choose_communication_mode()
+        pokemon_name = battleLogic.choose_pokemon(pokemon_db, self.asyncInput.awaitInput)
+        boosts = battleLogic.choose_stat_boosts(self.asyncInput.awaitInput)
+        comm_mode = battleLogic.choose_communication_mode(self.asyncInput.awaitInput)
 
         protocol.start_battle_setup(pokemon_name, boosts, comm_mode)
 
@@ -126,7 +121,7 @@ class Host:
         protocol = self.protocol_handler
         print("\n=== YOUR TURN (PLAYER) ===")
         print("Available moves: Tackle, Quick Attack, Ember, Water Gun, Vine Whip")
-        move = input("Choose move: ").strip()
+        move = self.asyncInput.awaitInput("Choose move: ").strip()
 
         protocol.send_attack_announce(move)
 
@@ -226,29 +221,49 @@ class Host:
             elif message_text:
                 print(f"Received message from unknown sender {address}. Ignoring.")
 
-    def __start_taking_input__(self):
-        if self.taking_input:
-            print("[WARN] Already taking input")
-            return
+    def __process_command__(self, text: str):
+        """ Processes the text, attepting to detect the command prefix (/)
+            and executing the necessary user action based on this
+        """
+        # Cannot process empty strings
+        if len(text) == 0:
+            return False
 
-        self.taking_input = True
-        self.input_thread.start()
+        # Only process stuff with the prefix (/)
+        text = text.strip()
+        prefix = text[0]
+        tokenized_text = text.split(" ")
+        if prefix != "/":
+            return False
 
-    def __stop_taking_input__(self):
-        if not self.taking_input:
-            print("[WARN] Already not taking input")
-            return
+        # Chat message that sends text
+        # syntax: /message all message text follows here
+        if tokenized_text[0][1:] == "message":
+            message = text[len("/message "):]
+            self.protocol_handler.send_chat_message(sender_name=self.protocol_handler.local_ip, 
+                                                    content_type=messages.ChatMessageType.TEXT, 
+                                                    content=message)
 
-        self.taking_input = False
+        # Chat message that sends a sticker
+        # syntax: /sticker sticker_filename
+        elif tokenized_text[0][1:] == "sticker":
+            filename = tokenized_text[1]
 
-    def __take_input__(self):
-        """ Takes user input and stores it into a buffer """
+            sticker_path_exists = os.path.isdir("stickers")
+            if not sticker_path_exists:
+                os.mkdir("stickers")
+                print("[COMMAND] There are no stickers in the directory... please try again.")
+                return True
 
-        while self.taking_input:
-            inp = input()
+            sticker_exists = os.path.isfile(f"stickers/{filename}")
+            if not sticker_exists:
+                print(f"[COMMAND] No stickers named f{filename} found... please try again.")
+                return True
 
-            self.input_buff[0] = inp
+        else:
+            print(f"[COMMAND] Unknown command {tokenized_text[0]} was run.")
 
+        return True
     # =====================================================
     # NETWORK HANDLERS
     # =====================================================
