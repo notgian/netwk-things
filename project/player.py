@@ -116,9 +116,9 @@ class Player:
         pokemon_db = load_pokemon_data()
 
         print("\n[PLAYER] === BATTLE SETUP ===")
-        pokemon_name = battleLogic.choose_pokemon(pokemon_db)
-        boosts = battleLogic.choose_stat_boosts()
-        comm_mode = battleLogic.choose_communication_mode()
+        pokemon_name = battleLogic.choose_pokemon(pokemon_db, self.asyncInput.awaitInput)
+        boosts = battleLogic.choose_stat_boosts(self.asyncInput.awaitInput)
+        comm_mode = battleLogic.choose_communication_mode(self.asyncInput.awaitInput)
 
         protocol.start_battle_setup(pokemon_name, boosts, comm_mode)
 
@@ -233,6 +233,11 @@ class Player:
         """ Processes the text, attepting to detect the command prefix (/)
             and executing the necessary user action based on this
         """
+        # Cannot process empty strings
+        if len(text) == 0:
+            return False
+
+        # Only process stuff with the prefix (/)
         text = text.strip()
         prefix = text[0]
         tokenized_text = text.split(" ")

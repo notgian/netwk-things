@@ -33,8 +33,6 @@ def deterministic_random(seed_value: int) -> float:
 
 
 def calculate_damage(match_data: dict, attacker_ip: str, defender_ip: str, move_name: str) -> int:
-
-
     # ---- Retrieve attacker/defender data ----
     attacker = match_data[attacker_ip]
     defender = match_data[defender_ip]
@@ -97,7 +95,7 @@ def calculate_damage(match_data: dict, attacker_ip: str, defender_ip: str, move_
 # Helper functions (same as Host)
 # ---------------------------------------------------------
 
-def choose_pokemon(pokemon_db):
+def choose_pokemon(pokemon_db, input_function=input):
     """Simple CLI Pokémon selection menu."""
     names = list(pokemon_db.keys())
     print("\n=== Choose Your Pokémon ===")
@@ -105,7 +103,7 @@ def choose_pokemon(pokemon_db):
         print(f"{i+1}. {name}")
 
     while True:
-        choice = input("Enter Pokémon name or number: ").strip()
+        choice = input_function("Enter Pokémon name or number: ").strip()
         if choice.isdigit():
             idx = int(choice) - 1
             if 0 <= idx < len(names):
@@ -117,13 +115,13 @@ def choose_pokemon(pokemon_db):
 
         print("Invalid Pokémon. Try again.")
 
-def choose_stat_boosts():
+def choose_stat_boosts(input_function=input):
     """Ask user for RFC-allowed stat boosts."""
     print("\n=== Stat Boost Allocation ===")
     while True:
         try:
-            sa = int(input("Special Attack Boost Uses (0–5): "))
-            sd = int(input("Special Defense Boost Uses (0–5): "))
+            sa = int(input_function("Special Attack Boost Uses (0–5): "))
+            sd = int(input_function("Special Defense Boost Uses (0–5): "))
             if 0 <= sa <= 5 and 0 <= sd <= 5:
                 return {
                     "special_attack_uses": sa,
@@ -133,14 +131,14 @@ def choose_stat_boosts():
             pass
         print("Invalid input. Enter numbers between 0 and 5.")
 
-def choose_communication_mode():
+def choose_communication_mode(input_function=input):
     print("\n=== Communication Mode===")
     while True:
         print("Select communication mode")
         print("1. P2P Mode")
         print("2. Broadcast Mode")
 
-        inp = input()
+        inp = input_function()
         if (inp == "1"):
             return messages.CommunicationMode.P2P
         elif (inp == "2"):

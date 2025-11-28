@@ -32,9 +32,7 @@ class AsyncInput:
         if not self.taking_input:
             print("[ERROR] Cannot await input because input thread is not running!")
             return None
-
-        if (message != ""):
-            print(message)
+        self.flush()
         while self.input_buff == "":
             pass
 
