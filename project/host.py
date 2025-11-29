@@ -182,22 +182,8 @@ class Host:
     # SETUP PHASE
     # -----------------------------------------------------
     def handle_setup_phase(self):
-        protocol = self.protocol_handler
-        my_ip = protocol.get_local_ip()
-
-        # Already selected?
-        if my_ip in protocol.match_data and "pokemon_name" in protocol.match_data[my_ip]:
-            protocol._check_battle_setup_complete()
-            return
-
-        pokemon_db = load_pokemon_data()
-
-        print("\n[PLAYER] === BATTLE SETUP ===")
-        pokemon_name = choose_pokemon(pokemon_db)
-        boosts = choose_stat_boosts()
-        comm_mode = choose_communication_mode()
-
-        protocol.start_battle_setup(pokemon_name, boosts, comm_mode)
+        print("[HOST] Waiting for GUI Pokémon selection...")
+        return
 
     # -----------------------------------------------------
     # ATTACK PHASE
