@@ -39,9 +39,11 @@ class GameProtocolHandler:
         # networking / identity
         self.opponent_addr = None
         self.is_host = False
+
         self.local_ip = None
         self.host_ip = None
         self.joiner_ip = None
+
         self.on_message_sent_hook = None
 
         # communication mode (P2P / BROADCAST – RFC 3 & 4.4)
@@ -49,6 +51,7 @@ class GameProtocolHandler:
 
         # RFC 5.1: reliability layer — sequence numbers
         self.next_sequence_number = 1
+
         # Track last local calculation so CALCULATION_REPORT / CONFIRM / RESOLUTION_REQUEST make sense
         self.last_local_calculation = None
 

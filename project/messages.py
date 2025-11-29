@@ -21,7 +21,7 @@ class MessageType(Enum):
     RESOLUTION_REQUEST = "RESOLUTION_REQUEST"
     GAME_OVER = "GAME_OVER"
     CHAT_MESSAGE = "CHAT_MESSAGE"
-    ACK_REPLY = "ACK_REPLY"
+    ACK = "ACK"
 
 
 class CommunicationMode(Enum):
@@ -203,8 +203,8 @@ class ChatMessage(Message):
 
 
 class AckReplyMessage(Message):
-    """ Provides the sublass for the ACK_REPLY message"""
+    """ Provides the sublass for the ACK message"""
     def __init__(self,
                  ack_number: int):
-        super().__init__(MessageType.ACK_REPLY,
+        super().__init__(MessageType.ACK,
                          ack_number=ack_number)

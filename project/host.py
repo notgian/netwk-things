@@ -79,6 +79,8 @@ class Host:
         protocol = self.protocol_handler
         my_ip = protocol.get_local_ip()
 
+        print("Started Host Loop")
+
         while self.game_running:
             # SETUP PHASE
             if protocol.game_state == "SETUP":

@@ -3,7 +3,7 @@ import socket
 from host import Host
 from player import Player
 import config
-
+from spectator import Spectator
 
 def get_my_ip():
     """Attempts to get the local network IP. Falls back to localhost."""

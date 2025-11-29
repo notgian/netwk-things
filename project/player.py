@@ -13,9 +13,9 @@ from async_input import AsyncInput
 # ---------------------------------------------------------
 
 class Player:
-    def __init__(self, host_ip, host_port, local_port=0):
+    def __init__(self, host_ip, host_port, local_ip, local_port=0):
         self.net_client = Client()
-        if not self.net_client.bind_socket('', local_port):
+        if not self.net_client.bind_socket(local_ip, local_port):
             exit()
 
         self.host_addr = (host_ip, host_port)
