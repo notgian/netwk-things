@@ -710,6 +710,7 @@ class PokemonSelectionScreen(QWidget):
         self.selected_mon = None
         self.cards = []
         self.mons = load_pokemon_list_from_csv()
+        self.loaded_sprites = {}
 
         self.init_ui()
 
@@ -817,6 +818,8 @@ class PokemonSelectionScreen(QWidget):
         if pixmap.isNull():
             return
 
+        self.loaded_sprites[mon_id] = pixmap
+
         for card in self.cards:
             if card.mon["id"] == mon_id:
                 sprite = pixmap.scaled(
@@ -841,21 +844,13 @@ class PokemonSelectionScreen(QWidget):
             print("[GUI] No Pokémon selected.")
             return
 
-        protocol = self.parent.protocol_handler
+        # Remember this Pokemon inside the main window
+        self.parent.selected_mon = self.selected_mon
 
-        pokemon_name = self.selected_mon["name"]
-        stat_boosts = {"special_attack_uses": 0, "special_defense_uses": 0}
+        print(f"[GUI] Pokémon locked in: {self.selected_mon['name']} (#{self.selected_mon['id']})")
 
-        protocol.start_battle_setup(
-            pokemon_name=pokemon_name,
-            stat_boosts=stat_boosts,
-            communication_mode=messages.CommunicationMode.P2P
-        )
-
-        print(f"[GUI] Submitted Pokémon to protocol: {pokemon_name}")
-
-        # Start waiting until both players have selected
-        self.parent.wait_for_both_pokemon()
+        # Directly open the stat + communication popup
+        self.parent.open_setup_popup()
 
 
 class SetupPopup(QWidget):
@@ -1084,8 +1079,9 @@ class SetupPopup(QWidget):
     # FINAL SEND
     # -----------------------------------------------------------
     def finish_setup(self, mode):
-        ip = self.protocol.local_ip
-        mon = self.protocol.match_data[ip]["pokemon_name"]
+        # Use the Pokemon chosen on this GUI, not from match_data
+        mon = self.parent.selected_mon  # dict with id, name, etc.
+        pokemon_name = mon["name"]
 
         boosts = {
             "special_attack_uses": self.sa_value,
@@ -1093,7 +1089,7 @@ class SetupPopup(QWidget):
         }
 
         self.protocol.start_battle_setup(
-            pokemon_name=mon,
+            pokemon_name=pokemon_name,
             stat_boosts=boosts,
             communication_mode=mode
         )
@@ -1112,73 +1108,87 @@ class VsScreen(QWidget):
         super().__init__(parent)
         self.parent = parent
         self.scaler = scaler
-        self.host_mon = host_mon
-        self.player_mon = player_mon
+        self.host_mon = host_mon        # dict with {id,name}
+        self.player_mon = player_mon    # dict with {id,name}
 
         self.init_ui()
 
     def init_ui(self):
         self.setGeometry(0, 0, self.parent.width(), self.parent.height())
 
-        # Background (full screen)
+        # ---------------------------------------------------
+        # Background
+        # ---------------------------------------------------
         self.bg = QLabel(self)
         pix = QPixmap("imgs/vs_bg.png")
         self.bg.setPixmap(pix)
         self.bg.setScaledContents(True)
         self.bg.setGeometry(0, 0, self.width(), self.height())
 
-        # ---------------------------------------------
-        # LEFT SIDE POKEMON (HOST)
-        # ---------------------------------------------
+        # ---------------------------------------------------
+        # PRELOADED SPRITES (no delay!)
+        # ---------------------------------------------------
+        selection_screen = self.parent.pokemon_screen
+        loaded = selection_screen.loaded_sprites
+
+        host_pix = loaded.get(self.host_mon["id"])
+        player_pix = loaded.get(self.player_mon["id"])
+
+        # Fallback if sprite not loaded (never happens but safe)
+        if host_pix is None:
+            host_pix = fetch_pokemon_sprite(self.host_mon["id"])
+        if player_pix is None:
+            player_pix = fetch_pokemon_sprite(self.player_mon["id"])
+
+        # ---------------------------------------------------
+        # LEFT SPRITE (host)
+        # ---------------------------------------------------
         self.left_sprite = QLabel(self)
         self.left_sprite.setGeometry(
-            self.scaler.x(150),
-            self.scaler.y(200),
-            self.scaler.w(500),
-            self.scaler.h(500)
+            self.scaler.x(77.1),
+            self.scaler.y(213.2),
+            self.scaler.w(577.4),
+            self.scaler.h(653.6)
         )
         self.left_sprite.setAlignment(Qt.AlignCenter)
-
-        host_pix = fetch_pokemon_sprite(self.host_mon["id"])
-        host_pix = host_pix.scaled(
-            self.left_sprite.width(),
-            self.left_sprite.height(),
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation
+        self.left_sprite.setPixmap(
+            host_pix.scaled(
+                self.left_sprite.width(),
+                self.left_sprite.height(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
         )
-        self.left_sprite.setPixmap(host_pix)
 
-        # ---------------------------------------------
-        # RIGHT SIDE POKEMON (PLAYER)
-        # ---------------------------------------------
+        # ---------------------------------------------------
+        # RIGHT SPRITE (player)
+        # ---------------------------------------------------
         self.right_sprite = QLabel(self)
         self.right_sprite.setGeometry(
-            self.scaler.x(900),
-            self.scaler.y(200),
-            self.scaler.w(500),
-            self.scaler.h(500)
+            self.scaler.x(1203.1),
+            self.scaler.y(162.4),
+            self.scaler.w(577.4),
+            self.scaler.h(653.6)
         )
         self.right_sprite.setAlignment(Qt.AlignCenter)
-
-        player_pix = fetch_pokemon_sprite(self.player_mon["id"])
-        player_pix = player_pix.scaled(
-            self.right_sprite.width(),
-            self.right_sprite.height(),
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation
+        self.right_sprite.setPixmap(
+            player_pix.scaled(
+                self.right_sprite.width(),
+                self.right_sprite.height(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
         )
-        self.right_sprite.setPixmap(player_pix)
 
-        # ---------------------------------------------
-        # Timer → after 5 seconds, continue to battle
-        # ---------------------------------------------
+        # ---------------------------------------------------
+        # Auto-transition after 5 seconds
+        # ---------------------------------------------------
         QTimer.singleShot(5000, self.finish_vs)
 
     def finish_vs(self):
         print("[GUI] VS screen finished, switching to battle view...")
         if hasattr(self.parent, "open_battle_screen"):
             self.parent.open_battle_screen()
-
 
 
 
@@ -1249,18 +1259,28 @@ class MainWindow(QStackedWidget):
     def open_vs_screen(self):
         protocol = self.protocol_handler
 
-        # The keys in match_data are IPs of players
+        # Get raw entries
         host_ip = protocol.host_ip
         player_ip = protocol.local_ip if not protocol.is_host else protocol.opponent_addr[0]
 
-        host_mon = protocol.match_data[host_ip]
-        player_mon = protocol.match_data[player_ip]
+        host_data = protocol.match_data[host_ip]
+        player_data = protocol.match_data[player_ip]
 
-        print(f"[GUI] Loading VS screen: {host_mon['pokemon_name']} VS {player_mon['pokemon_name']}")
+        # Convert "Bulbasaur" → {"id": 1, "name": "Bulbasaur"}
+        host_mon = self.get_pokemon_by_name(host_data["pokemon_name"])
+        player_mon = self.get_pokemon_by_name(player_data["pokemon_name"])
+
+        print(f"[GUI] Loading VS screen: {host_mon['name']} VS {player_mon['name']}")
 
         self.vs_screen = VsScreen(self, self.scaler, host_mon, player_mon)
         self.addWidget(self.vs_screen)
         self.setCurrentWidget(self.vs_screen)
+
+    def get_pokemon_by_name(self, name: str):
+        for mon in self.pokemon_screen.mons:
+            if mon["name"].lower() == name.lower():
+                return mon
+        return None
 
 
 # ---------------------------------------------
