@@ -17,7 +17,7 @@ class Host:
     """
     Manages the game as the Host (Player 1).
     Uses the Client to handle networking.
-    Handles exactly one player + any spectators.
+    Manages connections for one Player 2 and multiple Spectators.
     """
     def __init__(self, host_ip, port):
         self.net_client = Client()
@@ -27,6 +27,7 @@ class Host:
         self.player_opponent_addr = None
         self.spectator_addrs = []
 
+        self.protocol_handler = GameProtocolHandler(self.net_client)
         print(f"[HOST] Host Client running at {host_ip}:{port}")
 
         self.is_listening = False
@@ -46,27 +47,37 @@ class Host:
         while not connected:
             message_text, address = self.net_client.receive_from()
 
-            # No message
             if not message_text:
                 continue
 
             message_dict = self.protocol_handler._parse_message(message_text)
             msg_type = message_dict.get('message_type')
 
+            # -----------------------------------------------------
+            # 1. CONNECTION REQUESTS (Can happen anytime)
+            # -----------------------------------------------------
             if msg_type == messages.MessageType.HANDSHAKE_REQUEST.value:
                 self.handle_player_join(address)
-                self.__start_listening__()
-                self.asyncInput.start()
-                connected=True
+                continue
+            elif msg_type == messages.MessageType.SPECTATOR_REQUEST.value:
+                self.handle_spectator_join(address)
+                continue
 
-            else:
-                print(f"[Host] Ignoring unknown message type from {address}")
+            # -----------------------------------------------------
+            # 2. GAME & CHAT MESSAGES
+            # -----------------------------------------------------
+            if address == self.player_opponent_addr:
+                self.broadcast_player_message(message_text) #sends to spectator what ir received
+                self.protocol_handler.process_message(message_text, address)
+            elif address in self.spectator_addrs:
+                self.handle_spectator_message(message_text)
 
     # =====================================================
     # MAIN HOST LOOP
     # =====================================================
     def run_host_loop(self):
         protocol = self.protocol_handler
+        my_ip = protocol.get_local_ip()
 
         while self.game_running:
             # SETUP PHASE
@@ -285,6 +296,9 @@ class Host:
 
         self.protocol_handler.set_opponent(self.player_opponent_addr, match_data, is_host=True)
 
+        #TODO Get pokemon name from user
+        #self.protocol_handler.start_battle_setup(pokemon_name="Pikachu") #example
+
     def handle_spectator_join(self, address):
         print(f"\n[HOST] Spectator connected from {address}.")
         if address not in self.spectator_addrs:
@@ -292,23 +306,56 @@ class Host:
             print(f"[HOST] Spectator added. Total: {len(self.spectator_addrs)}")
 
         seed = self.protocol_handler.match_data.get('seed', 0)
+
+        # 1. Handshake
         response_msg = messages.HandshakeResponseMessage(seed=seed)
+
         self.net_client.send_to(response_msg.as_text(), address)
         print("[HOST] Spectator handshake complete.")
 
-    def handle_player_message(self, message_text: str):
-        print(f"[HOST] Received from P2:\n{message_text}")
-        self.protocol_handler.process_message(message_text, self.player_opponent_addr)
+        # 2. State Sync (kind of brute forcing it rn)
+        if self.protocol_handler.game_state not in ['CONNECTED', 'SETUP']:
+            host_data = self.protocol_handler.match_data[self.protocol_handler.local_ip]
+            msg = messages.BattleSetupMessage(
+                communication_mode=messages.CommunicationMode.P2P,
+                pokemon_name=host_data['pokemon_name'],
+                stat_boosts=host_data['stat_boosts'],
+            )
+            self.net_client.send_to(msg.as_text(), address)
+        if self.player_opponent_addr and self.player_opponent_addr[0] in self.protocol_handler.match_data:
+            opp_data = self.protocol_handler.match_data[self.player_opponent_addr[0]]
+            msg = messages.BattleSetupMessage(
+                communication_mode=messages.CommunicationMode.P2P,
+                pokemon_name=opp_data['pokemon_name'],
+                stat_boosts=opp_data['stat_boosts'],
+            )
+            self.net_client.send_to(msg.as_text(), address)
+
         self.broadcast_to_spectators(message_text)
 
     def handle_spectator_message(self, message_text: str):
-        print(f"[HOST] Received from Spectator:\n{message_text}")
         message_dict = self.protocol_handler._parse_message(message_text)
 
+        message_dict = self.protocol_handler._parse_message(message_text)
         if message_dict.get('message_type') == messages.MessageType.CHAT_MESSAGE.value:
+            sender = message_dict.get('sender_name', 'Spectator')
+            print(f"[CHAT] {sender}: {message_dict.get('message_text', '')}")
             self.broadcast_to_all(message_text, exclude_sender=message_dict.get('sender_name'))
 
-    def broadcast_to_spectators(self, message_text: str):
+    def broadcast_host_message(self, message_text: str):
+        """Called when HOST sends a message."""
+        # Append Host's IP
+        tagged_text = f"HOST\n" + message_text
+        self._send_to_spectators(tagged_text)
+
+    def broadcast_player_message(self, message_text: str):
+        """Called when PLAYER sends a message."""
+        # Append Player's IP
+        tagged_text = f"PLAYER\n" + message_text
+        self._send_to_spectators(tagged_text)
+
+    def _send_to_spectators(self, message_text: str):
+        """Low-level sender"""
         for addr in self.spectator_addrs:
             self.net_client.send_to(message_text, addr)
 
@@ -317,4 +364,3 @@ class Host:
         for addr in peers:
             if addr and addr != exclude_sender:
                 self.net_client.send_to(message_text, addr)
-

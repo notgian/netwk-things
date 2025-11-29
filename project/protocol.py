@@ -42,6 +42,7 @@ class GameProtocolHandler:
         self.local_ip = None
         self.host_ip = None
         self.joiner_ip = None
+        self.on_message_sent_hook = None
 
         # communication mode (P2P / BROADCAST – RFC 3 & 4.4)
         self.communication_mode = None
@@ -98,6 +99,9 @@ class GameProtocolHandler:
         print(f"[PROTOCOL SEND]\n{message_text}\n---")
         self.net_client.send_to(message_text, self.opponent_addr)
 
+        if self.on_message_sent_hook and msg_obj.type != messages.MessageType.ACK_REPLY:
+            self.on_message_sent_hook(message_text)
+
     # -----------------------------
     #  SETUP OPPONENT & MATCH DATA
     # -----------------------------
@@ -105,7 +109,9 @@ class GameProtocolHandler:
         self._ensure_local_identity()
 
         self.opponent_addr = opponent_addr
+        self.match_data = match_data
         self.is_host = is_host
+        print(f"[PROTOCOL] Opponent set to {opponent_addr}. Seed: {match_data.get('seed')}")
 
         # initialize match_data with at least the shared seed
         self.match_data = match_data.copy()
@@ -132,10 +138,10 @@ class GameProtocolHandler:
     #  PROTOCOL 4.4: BATTLE_SETUP
     # -----------------------------
     def start_battle_setup(
-        self,
-        pokemon_name: str,
-        stat_boosts: dict | None = None,
-        communication_mode: CommunicationMode = CommunicationMode.P2P,
+            self,
+            pokemon_name: str,
+            stat_boosts: dict | None = None,
+            communication_mode: CommunicationMode = CommunicationMode.P2P,
     ):
         self._ensure_local_identity()
 
@@ -194,9 +200,9 @@ class GameProtocolHandler:
             opponent_ip = self.opponent_addr[0]
 
         if (
-            opponent_ip
-            and opponent_ip in self.match_data
-            and self.local_ip in self.match_data
+                opponent_ip
+                and opponent_ip in self.match_data
+                and self.local_ip in self.match_data
         ):
             print("[PROTOCOL] BATTLE_SETUP complete on both sides.")
 
@@ -318,8 +324,11 @@ class GameProtocolHandler:
                 self.communication_mode = messages.CommunicationMode.P2P
 
         print(
-            f"[PROTOCOL] Opponent BATTLE_SETUP: ip={opponent_ip}, "
-            f"pokemon={pokemon_name}, hp={base_hp}, boosts={stat_boosts}"
+            f"\n\n[PROTOCOL] Opponent BATTLE_SETUP: "
+            f"\n           ip={opponent_ip}, "
+            f"\n           pokemon={pokemon_name}, "
+            f"\n           hp={base_hp}, "
+            f"\n           boosts={stat_boosts}\n"
         )
 
         # Check after receiving opponent setup
@@ -389,13 +398,13 @@ class GameProtocolHandler:
     #  PROTOCOL 4.7: CALCULATION_REPORT
     # -----------------------------
     def send_calculation_report(
-        self,
-        attacker: str,
-        move_used: str,
-        remaining_health: int,
-        damage_dealt: int,
-        defender_hp_remaining: int,
-        status_message: str,
+            self,
+            attacker: str,
+            move_used: str,
+            remaining_health: int,
+            damage_dealt: int,
+            defender_hp_remaining: int,
+            status_message: str,
     ):
         """
         NOTE: All of these values must be computed by the GAME LOGIC

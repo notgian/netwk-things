@@ -26,15 +26,14 @@ class Player:
         self.asyncInput = AsyncInput(self.__process_command__)
 
         self.protocol_handler = GameProtocolHandler(self.net_client)
+        print(f"Player client initialized. Will connect to {host_ip}:{host_port}")
 
         self.game_running = True
 
     # -----------------------------------------------------
     # CONNECTION HANDSHAKE
     # -----------------------------------------------------
-    def connect(self, as_spectator=False):
-        self.is_spectator = as_spectator
-
+    def connect(self):
         request_msg = messages.HandshakeRequestMessage()
 
         try:
@@ -223,9 +222,9 @@ class Player:
         while self.is_listening:
             message_text, address = self.net_client.receive_from()
 
-            # Handle incoming message
             if message_text and address == self.host_addr:
                 self.protocol_handler.process_message(message_text, address)
+
             elif message_text:
                 print(f"Received message from unknown sender {address}. Ignoring.")
 
