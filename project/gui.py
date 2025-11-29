@@ -1,3 +1,4 @@
+#==== ALL IMPORTS ====================================================================
 import sys
 
 from PyQt5.QtWidgets import (
@@ -23,16 +24,18 @@ import messages
 import threading
 import time
 from PyQt5.QtCore import QTimer
+#=====================================================================================
 
-# ---------------------------------------------
+
+
+#=====================================================================================
 # 0. GAME THREADS FOR HOST / PLAYER / SPECTATOR
-# ---------------------------------------------
+#=====================================================================================
 from host import Host
 from player import Player
 from spectator import Spectator
 import config
 import socket
-
 
 def get_my_ip():
     """Returns the actual local LAN IP address."""
@@ -45,7 +48,6 @@ def get_my_ip():
     finally:
         s.close()
     return IP
-
 
 class HostThread(QThread):
     handshake_success = pyqtSignal()
@@ -84,9 +86,9 @@ class SpectatorThread(QThread):
         self.spec.connect_to_host()
 
 
-# ---------------------------------------------
-# Pokemon data + sprite loading
-# ---------------------------------------------
+#=====================================================================================
+# 0.1 Pokemon data + sprite loading
+#=====================================================================================
 POKE_SPRITE_URL = (
     "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{id}.png"
 )
@@ -121,10 +123,9 @@ def fetch_pokemon_sprite(pokedex_id: int) -> QPixmap:
     return QPixmap()  # fallback
 
 
-
-# ---------------------------------------------
-# 1. SCALER (Base: 1920x1080)
-# ---------------------------------------------
+#=====================================================================================
+# 0.2 SCALER (Base: 1920x1080)
+#=====================================================================================
 class Scaler:
     BASE_W = 1920
     BASE_H = 1080
@@ -140,9 +141,10 @@ class Scaler:
     def h(self, v): return int(v * self.sy)
 
 
-# ---------------------------------------------
-# 2. TITLE SCREEN
-# ---------------------------------------------
+
+#=====================================================================================
+# 1. TITLE SCREEN
+#=====================================================================================
 class TitleScreen(QWidget):
     def __init__(self, parent, scaler: Scaler):
         super().__init__()
@@ -203,9 +205,10 @@ class TitleScreen(QWidget):
         self.parent.setCurrentIndex(1)
 
 
-# ---------------------------------------------
-# 3. MODE SELECT
-# ---------------------------------------------
+
+#=====================================================================================
+# 2. MODE SELECT
+#=====================================================================================
 class ModeSelectScreen(QWidget):
     def __init__(self, parent, scaler: Scaler):
         super().__init__()
@@ -285,7 +288,7 @@ class ModeSelectScreen(QWidget):
 
 
 # ---------------------------------------------
-# 4. HOST POP-UP
+# 2.1 HOST POP-UP
 # ---------------------------------------------
 class HostPopup(QWidget):
     def __init__(self, parent, scaler: Scaler, ip_address: str):
@@ -362,7 +365,7 @@ class HostPopup(QWidget):
 
 
 # ---------------------------------------------
-# 5. JOIN POP-UP
+# 2.2 JOIN POP-UP
 # ---------------------------------------------
 class JoinPopup(QWidget):
     def __init__(self, parent, scaler: Scaler):
@@ -501,7 +504,7 @@ class JoinPopup(QWidget):
 
 
 # ---------------------------------------------
-# 6. SPECTATE POP-UP
+# 2.3 SPECTATE POP-UP
 # ---------------------------------------------
 class SpectatePopup(QWidget):
     def __init__(self, parent, scaler: Scaler):
@@ -628,12 +631,12 @@ class SpectatePopup(QWidget):
 
 
 
-# ---------------------------------------------
-# 7. SPRITE PICKER
-# ---------------------------------------------
+#=====================================================================================
+# 3. SPRITE PICKER
+#=====================================================================================
 
 # ---------------------------------------------
-# Pokémon Card (clickable + hover glow)
+# Pokémon Card
 # ---------------------------------------------
 class PokemonCard(QPushButton):
     def __init__(self, mon: dict, scaler: Scaler, parent=None):
@@ -699,7 +702,7 @@ class SpriteLoaderThread(QThread):
             self.sprite_loaded.emit(mon["id"], pix)
 
 # ---------------------------------------------
-# Pokémon Selection Screen crollable grid)
+# Pokémon Selection Screen
 # ---------------------------------------------
 class PokemonSelectionScreen(QWidget):
     def __init__(self, parent, scaler: Scaler):
@@ -760,9 +763,6 @@ class PokemonSelectionScreen(QWidget):
 
         self.scroll.setWidget(container)
 
-        # ------------------------------------
-        # 5-COLUMN GRID (was 8 columns before)
-        # ------------------------------------
         columns = 5
         row = 0
         col = 0
@@ -853,6 +853,9 @@ class PokemonSelectionScreen(QWidget):
         self.parent.open_setup_popup()
 
 
+# --------------------------------------------------
+# 3.1 Set-Up Window
+# --------------------------------------------------
 class SetupPopup(QWidget):
     def __init__(self, parent, scaler, protocol_handler):
         super().__init__(parent)
@@ -897,7 +900,7 @@ class SetupPopup(QWidget):
         self.show()
 
     # -----------------------------------------------------------
-    # PAGE 1 — STAT BOOSTS (clean & centered)
+    # PAGE 1 — STAT BOOSTS
     # -----------------------------------------------------------
     def build_stat_page(self):
         page = QWidget(self)
@@ -912,8 +915,7 @@ class SetupPopup(QWidget):
             self.scaler.w(667.4), self.scaler.h(60)
         )
 
-        # --- SHIFT ALL STAT FIELDS DOWN ---
-        base_y = 230  # ↓↓↓ lowered from 170 → 230
+        base_y = 230
 
         # SA label
         sa_label = QLabel("Special Attack Uses (0–5):", page)
@@ -924,7 +926,7 @@ class SetupPopup(QWidget):
             self.scaler.w(320), self.scaler.h(40)
         )
 
-        # SA input background (smaller width)
+        # SA input background
         sa_bg = QLabel(page)
         sa_bg.setGeometry(
             self.scaler.x(430), self.scaler.y(base_y - 5),
@@ -932,7 +934,7 @@ class SetupPopup(QWidget):
         )
         sa_bg.setStyleSheet("background-color: #14114E; border-radius: 14px;")
 
-        # SA input (smaller width, nudged right)
+        # SA input
         self.sa_input = QLineEdit(page)
         self.sa_input.setText("0")
         self.sa_input.setFont(QFont("Arial", int(self.scaler.y(18))))
@@ -950,7 +952,7 @@ class SetupPopup(QWidget):
             self.scaler.w(130), self.scaler.h(25)
         )
 
-        # SD label (spaced further down)
+        # SD label
         sd_label = QLabel("Special Defense Uses (0–5):", page)
         sd_label.setFont(QFont("Arial", int(self.scaler.y(16))))
         sd_label.setStyleSheet("color: white;")
@@ -985,7 +987,7 @@ class SetupPopup(QWidget):
             self.scaler.w(130), self.scaler.h(25)
         )
 
-        # NEXT BUTTON — unchanged
+        # NEXT BUTTON
         next_btn = QPushButton("Next", page)
         next_btn.setCursor(Qt.PointingHandCursor)
         next_btn.setStyleSheet(f"""
@@ -1007,7 +1009,7 @@ class SetupPopup(QWidget):
         self.pages.addWidget(page)
 
     # -----------------------------------------------------------
-    # PAGE 2 — COMMUNICATION MODE (vertical, larger buttons)
+    # PAGE 2 — COMMUNICATION MODE
     # -----------------------------------------------------------
     def build_comm_page(self):
         page = QWidget(self)
@@ -1022,7 +1024,6 @@ class SetupPopup(QWidget):
             self.scaler.w(667.4), self.scaler.h(60)
         )
 
-        # ------- BIG RED BUTTON STYLE -------
         red_button_style = f"""
             QPushButton {{
                 background-color: #FF3B30;
@@ -1036,7 +1037,7 @@ class SetupPopup(QWidget):
             }}
         """
 
-        # P2P BUTTON (big & centered)
+
         btn_p2p = QPushButton("P2P Mode", page)
         btn_p2p.setCursor(Qt.PointingHandCursor)
         btn_p2p.setStyleSheet(red_button_style)
@@ -1046,7 +1047,7 @@ class SetupPopup(QWidget):
         )
         btn_p2p.clicked.connect(lambda: self.finish_setup(messages.CommunicationMode.P2P))
 
-        # BROADCAST BUTTON (big & directly below)
+
         btn_bc = QPushButton("Broadcast Mode", page)
         btn_bc.setCursor(Qt.PointingHandCursor)
         btn_bc.setStyleSheet(red_button_style)
@@ -1100,9 +1101,9 @@ class SetupPopup(QWidget):
 
 
 
-# ---------------------------------------------
-# LOADING SCREEN
-# ---------------------------------------------
+#=====================================================================================
+# 4. LOADING SCREEN
+#=====================================================================================
 class VsScreen(QWidget):
     def __init__(self, parent, scaler: Scaler, host_mon, player_mon):
         super().__init__(parent)
@@ -1192,10 +1193,242 @@ class VsScreen(QWidget):
 
 
 
+#=====================================================================================
+# 5. BATTLE SCREEN
+#=====================================================================================
+class BattleScreen(QWidget):
+    def __init__(self, parent, scaler, protocol_handler, role):
+        super().__init__(parent)
+        self.parent = parent
+        self.scaler = scaler
+        self.protocol = protocol_handler
+        self.role = role   # "host", "player", "spectator"
 
-# ---------------------------------------------
-# 9. MAIN APPLICATION WINDOW
-# ---------------------------------------------
+        self.init_ui()
+
+    def init_ui(self):
+        self.setGeometry(0, 0, self.parent.width(), self.parent.height())
+
+        # ------------------------------------------------------------
+        # BACKGROUND
+        # ------------------------------------------------------------
+        self.bg = QLabel(self)
+        pix = QPixmap("imgs/battle_bg.png")
+        self.bg.setPixmap(pix)
+        self.bg.setScaledContents(True)
+        self.bg.setGeometry(0, 0, self.width(), self.height())
+
+        # ------------------------------------------------------------
+        # BATTLEFIELD AREA
+        # ------------------------------------------------------------
+
+        # Player Pokémon sprite (bottom-left)
+        self.player_sprite = QLabel(self)
+        self.player_sprite.setGeometry(
+            self.scaler.x(350.3),
+            self.scaler.y(561.9),
+            self.scaler.w(161.7),
+            self.scaler.h(183)
+        )
+        self.player_sprite.setScaledContents(True)
+
+        # Opponent Pokémon sprite (top-right)
+        self.opponent_sprite = QLabel(self)
+        self.opponent_sprite.setGeometry(
+            self.scaler.x(795.9),
+            self.scaler.y(206.9),
+            self.scaler.w(124.9),
+            self.scaler.h(158.4)
+        )
+        self.opponent_sprite.setScaledContents(True)
+
+        # ------------------------------------------------------------
+        # HP BARS
+        # ------------------------------------------------------------
+        self.player_hp_bar = HPBar(self, self.scaler, is_player=True)
+        self.player_hp_bar.setGeometry(
+            self.scaler.x(361.2),
+            self.scaler.y(504.2),
+            self.scaler.w(300),
+            self.scaler.h(50)
+        )
+
+        self.opponent_hp_bar = HPBar(self, self.scaler, is_player=False)
+        self.opponent_hp_bar.setGeometry(
+            self.scaler.x(754.5),
+            self.scaler.y(158.8),
+            self.scaler.w(300),
+            self.scaler.h(50)
+        )
+
+        # ------------------------------------------------------------
+        # MOVE PANEL (only host/player)
+        # ------------------------------------------------------------
+        self.move_panel = QWidget(self)
+        self.move_panel.setGeometry(
+            self.scaler.x(100),
+            self.scaler.y(780),
+            self.scaler.w(550),
+            self.scaler.h(200)
+        )
+        self.move_panel.setStyleSheet("background: #0d1a8c; border-radius: 25px;")
+
+        grid = QGridLayout(self.move_panel)
+        grid.setContentsMargins(20, 20, 20, 20)
+
+        self.move_btns = {}
+        move_names = ["Tackle", "Ember", "Quick Attack", "Water Gun"]
+        for i, m in enumerate(move_names):
+            btn = QPushButton(m)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background: #ff3b30;
+                    color: white;
+                    font-weight: bold;
+                    border-radius: 20px;
+                    padding: 15px;
+                }
+                QPushButton:hover {
+                    background: #ff6a60;
+                }
+            """)
+            btn.clicked.connect(lambda _, mv=m: self.send_move(mv))
+            self.move_btns[m] = btn
+            grid.addWidget(btn, i // 2, i % 2)
+
+        # Hide for spectator
+        if self.role == "spectator":
+            self.move_panel.hide()
+
+        # ------------------------------------------------------------
+        # CHAT PANEL (right side)
+        # ------------------------------------------------------------
+        self.chat_panel = QWidget(self)
+        self.chat_panel.setGeometry(
+            self.scaler.x(1250),
+            self.scaler.y(50),
+            self.scaler.w(600),
+            self.scaler.h(900)
+        )
+        self.chat_panel.setStyleSheet("background: #c9dfe1; border-radius: 30px;")
+
+        # For now: simple placeholder
+        self.chat_label = QLabel("Chat will be here", self.chat_panel)
+        self.chat_label.setGeometry(20, 20, 300, 30)
+
+    # -----------------------------------------------------------------
+    # SEND MOVE TO PROTOCOL
+    # -----------------------------------------------------------------
+    def send_move(self, move_name):
+        print(f"[GUI] Player selected move: {move_name}")
+        self.protocol.send_attack_announce(move_name)
+
+    # -----------------------------------------------------------------
+    # UPDATE SPRITES (called once AFTER match_data is known)
+    # -----------------------------------------------------------------
+    def load_sprites(self, player_pixmap, opponent_pixmap):
+        self.player_sprite.setPixmap(player_pixmap)
+        self.opponent_sprite.setPixmap(opponent_pixmap)
+
+    # -----------------------------------------------------------------
+    # UPDATE HP BARS DURING BATTLE
+    # -----------------------------------------------------------------
+    def update_hp(self, ip, new_hp):
+        # to be implemented later
+        pass
+
+
+# ------------------------------------------------------------
+# HP BAR CLASS
+# ------------------------------------------------------------
+class HPBar(QWidget):
+    def __init__(self, parent, scaler, is_player=True):
+        super().__init__(parent)
+        self.scaler = scaler
+        self.is_player = is_player
+
+        # Background area (transparent)
+        self.setStyleSheet("background: transparent;")
+
+        # Pokémon name label
+        self.name_label = QLabel("Pokemon", self)
+        self.name_label.setStyleSheet("""
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        """)
+
+        # Level label (always 50)
+        self.level_label = QLabel("50", self)
+        self.level_label.setStyleSheet("""
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+        """)
+
+        # HP bar background
+        self.hp_bg = QLabel(self)
+        self.hp_bg.setStyleSheet("""
+            background: #1e3fa8;
+            border-radius: 10px;
+        """)
+
+        # HP bar (foreground fill)
+        self.hp_fill = QLabel(self)
+        self.hp_fill.setStyleSheet("""
+            background: #51ff74;
+            border-radius: 10px;
+        """)
+
+        # HP text
+        self.hp_text = QLabel("50/50", self)
+        self.hp_text.setStyleSheet("""
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+        """)
+
+    def resizeEvent(self, event):
+        w = self.width()
+        h = self.height()
+
+        # Position name + level
+        self.name_label.setGeometry(0, 0, int(w * 0.75), 25)
+        self.level_label.setGeometry(int(w * 0.75), 0, int(w * 0.25), 25)
+
+        # HP bar background
+        self.hp_bg.setGeometry(0, 30, w, 20)
+
+        # Filled HP bar (dynamic)
+        self.hp_fill.setGeometry(0, 30, w, 20)
+
+        # HP text on top
+        self.hp_text.setGeometry(0, 55, w, 30)
+
+    # Update HP dynamically
+    def set_values(self, name, current_hp, max_hp):
+        self.name_label.setText(name)
+        self.level_label.setText("50")
+
+        # Percent fill
+        percent = current_hp / max_hp
+        percent = max(0, min(1, percent))
+
+        # Adjust fill bar width
+        full_width = self.width()
+        self.hp_fill.setGeometry(
+            0, 30,
+            int(full_width * percent),
+            20
+        )
+
+        self.hp_text.setText(f"{current_hp}/{max_hp}")
+
+
+
+#=====================================================================================
+# 6. MAIN WINDOW
+#=====================================================================================
 class MainWindow(QStackedWidget):
     def __init__(self):
         super().__init__()
@@ -1282,9 +1515,59 @@ class MainWindow(QStackedWidget):
                 return mon
         return None
 
+    def open_battle_screen(self):
+        print("[GUI] Opening Battle Screen...")
+
+        role = "spectator"
+        if self.protocol_handler.is_host:
+            role = "host"
+        else:
+            role = "player"
+
+        # Create the battle screen
+        self.battle_screen = BattleScreen(
+            self,
+            self.scaler,
+            self.protocol_handler,
+            role
+        )
+
+        # ADD IT INTO STACKED WIDGET
+        self.addWidget(self.battle_screen)
+        self.setCurrentWidget(self.battle_screen)
+
+        # Load sprites after match_data is ready
+        self._load_battle_sprites()
+
+    def _load_battle_sprites(self):
+        protocol = self.protocol_handler
+        md = protocol.match_data
+
+        # Determine host & player Pokémon
+        host_ip = protocol.host_ip
+        join_ip = protocol.joiner_ip
+
+        host_mon = self.get_pokemon_by_name(md[host_ip]["pokemon_name"])
+        join_mon = self.get_pokemon_by_name(md[join_ip]["pokemon_name"])
+
+        # Load preloaded sprites from selection screen
+        loaded = self.pokemon_screen.loaded_sprites
+
+        host_pix = loaded.get(host_mon["id"])
+        player_pix = loaded.get(join_mon["id"])
+
+        # Host = opponent, Player = self
+        if protocol.is_host:
+            my_pix = host_pix
+            opp_pix = player_pix
+        else:
+            my_pix = player_pix
+            opp_pix = host_pix
+
+        self.battle_screen.load_sprites(my_pix, opp_pix)
 
 # ---------------------------------------------
-# 10. RUN APPLICATION
+# RUN APPLICATION
 # ---------------------------------------------
 if __name__ == "__main__":
     app = QApplication(sys.argv)
