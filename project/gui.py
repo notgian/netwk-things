@@ -4,7 +4,7 @@ import sys
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton,
     QStackedWidget, QVBoxLayout, QGraphicsDropShadowEffect,
-    QScrollArea, QFrame, QSizePolicy, QGridLayout, QLineEdit, QHBoxLayout, QGraphicsOpacityEffect
+    QScrollArea, QFrame, QSizePolicy, QGridLayout, QLineEdit, QHBoxLayout, QGraphicsOpacityEffect, QLayout
 )
 
 from PyQt5.QtGui import (
@@ -1231,7 +1231,9 @@ class VsScreen(QWidget):
 # 5. BATTLE SCREEN
 #=====================================================================================
 class BattleScreen(QWidget):
+    # signal used to safely update chat bubbles on the GUI thread
     chat_received = pyqtSignal(dict)
+
     def __init__(self, parent, scaler, protocol_handler, role):
         super().__init__(parent)
         self.parent = parent
@@ -1242,6 +1244,7 @@ class BattleScreen(QWidget):
 
         self.init_ui()
 
+        # CHAT: connect signal to slot
         self.chat_received.connect(self._handle_chat_on_main_thread)
 
         # Start polling once UI is ready
@@ -1345,7 +1348,7 @@ class BattleScreen(QWidget):
             return btn
 
         self.btn_tackle = make_move_btn("Tackle", 712.8 - 59.4, 836.6 - 818.9)
-        self.btn_quick = make_move_btn("Quick Attack", 715.7 - 59.4, 934.8 - 818.9)
+        self.btn_quick  = make_move_btn("Quick Attack", 715.7 - 59.4, 934.8 - 818.9)
         self.btn_ember  = make_move_btn("Ember", 976.2 - 59.4, 836.6 - 818.9)
         self.btn_water  = make_move_btn("Water Gun", 976.2 - 59.4, 935 - 818.9)
 
@@ -1371,19 +1374,37 @@ class BattleScreen(QWidget):
             self.scaler.x(20), self.scaler.y(20),
             self.scaler.w(550), self.scaler.h(870)
         )
-        self.chat_scroll_area.setStyleSheet("border: none; background: transparent;")
+        self.chat_scroll_area.setStyleSheet("""
+            border: none;
+            background: #d9e1e1;
+            border-radius: 50px;   /* rounder edges */
+        """)
         self.chat_scroll_area.setWidgetResizable(True)
+
+        self.chat_scroll_area.viewport().setStyleSheet("""
+            background: #d9e1e1;
+            border-radius: 50px;
+        """)
 
         # Container for bubbles
         self.chat_container = QWidget()
+        self.chat_container.setStyleSheet("""
+            background: #d9e1e1;
+            border-radius: 50px;
+        """)
+
         self.chat_layout = QVBoxLayout(self.chat_container)
+        self.chat_layout.setContentsMargins(20, 20, 20, 20)
+        self.chat_layout.setSpacing(18)
         self.chat_layout.setAlignment(Qt.AlignTop)
+        self.chat_layout.setSizeConstraint(QLayout.SetMinAndMaxSize)
+
         self.chat_scroll_area.setWidget(self.chat_container)
 
         # Input box
         self.chat_input = QLineEdit(self.chat_panel)
         self.chat_input.setGeometry(
-            self.scaler.x(40), self.scaler.y(925),
+            self.scaler.x(20), self.scaler.y(925),
             self.scaler.w(400), self.scaler.h(60)
         )
         self.chat_input.setStyleSheet("""
@@ -1393,10 +1414,10 @@ class BattleScreen(QWidget):
             font-size: 20px;
         """)
 
-        # --- STICKER BUTTON (LEFT) ---
+        # STICKER button
         self.sticker_btn = QPushButton(self.chat_panel)
         self.sticker_btn.setGeometry(
-            self.scaler.x(460), self.scaler.y(925),
+            self.scaler.x(440), self.scaler.y(925),
             self.scaler.w(60), self.scaler.h(60)
         )
         self.sticker_btn.setIcon(QIcon("imgs/sticker_btn.png"))
@@ -1407,10 +1428,10 @@ class BattleScreen(QWidget):
         """)
         self.sticker_btn.clicked.connect(self.open_sticker_menu)
 
-        # --- SEND BUTTON (RIGHT) ---
+        # SEND button
         self.send_btn = QPushButton(self.chat_panel)
         self.send_btn.setGeometry(
-            self.scaler.x(530), self.scaler.y(925),
+            self.scaler.x(510), self.scaler.y(925),
             self.scaler.w(60), self.scaler.h(60)
         )
         self.send_btn.setIcon(QIcon("imgs/send_btn.png"))
@@ -1434,13 +1455,14 @@ class BattleScreen(QWidget):
     def load_sprites(self, player_pixmap, opponent_pixmap):
         self.player_sprite.setPixmap(player_pixmap)
         self.opponent_sprite.setPixmap(opponent_pixmap)
+        self.update_all_hp()
 
     def enable_moves(self, enabled: bool):
         for btn in [self.btn_tackle, self.btn_quick, self.btn_ember, self.btn_water]:
             btn.setEnabled(enabled)
 
     # =====================================================================
-    # DAMAGE HANDLING
+    # DAMAGE HANDLING  (UNCHANGED)
     # =====================================================================
     def perform_damage_resolution(self):
         protocol = self.protocol
@@ -1484,7 +1506,7 @@ class BattleScreen(QWidget):
             )
 
     # =====================================================================
-    # POLLING
+    # POLLING  (UNCHANGED)
     # =====================================================================
     def start_polling(self):
         QTimer.singleShot(50, self.poll_protocol)
@@ -1492,7 +1514,10 @@ class BattleScreen(QWidget):
     def poll_protocol(self):
         protocol = self.protocol
 
+        # NORMAL GAME LOOP ======================================================
         if protocol.game_state == "WAITING_FOR_MOVE":
+            self.update_all_hp()
+
             self.damage_thread_running = False
             if protocol.is_my_turn():
                 self.enable_moves(True)
@@ -1517,15 +1542,40 @@ class BattleScreen(QWidget):
             self.prompt_box.setText(protocol.last_received_status)
             self.update_all_hp()
 
+        # GAME OVER LOGIC =======================================================
         if protocol.game_state == "GAME_OVER":
-            self.prompt_box.setText("GAME OVER!")
+
+            # Only check for missing data *inside* GAME_OVER
+            if not protocol.last_received_game_over:
+                QTimer.singleShot(50, self.poll_protocol)
+                return
+
             self.enable_moves(False)
+
+            winner = protocol.last_received_game_over.get("winner")
+            loser = protocol.last_received_game_over.get("loser")
+
+            if self.role == "spectator":
+                image = "imgs/game_ended.png"
+            else:
+                my_pokemon = protocol.match_data[protocol.fmt_address(protocol.local_addr)]["pokemon_name"]
+                if my_pokemon == winner:
+                    image = "imgs/you_won.png"
+                else:
+                    image = "imgs/game_over.png"
+
+            # Show ending screen
+            EndingScreen(self.parent, self.scaler, image)
+
+            # Tell parent that battle is finished
+            self.parent.active_battle_ended()
             return
 
+        # CONTINUE POLLING ======================================================
         QTimer.singleShot(50, self.poll_protocol)
 
     # =====================================================================
-    # UPDATE HP
+    # UPDATE HP  (UNCHANGED)
     # =====================================================================
     def update_all_hp(self):
         protocol = self.protocol
@@ -1550,93 +1600,125 @@ class BattleScreen(QWidget):
     # CHAT SYSTEM — BUBBLES, STICKERS & ANIMATION
     # =====================================================================
     def make_bubble(self, sender, role, text, is_sticker=False):
-        colors = {
-            "host": "#1a73e8",
-            "player": "#e84545",
-            "spectator": "#00a86b",
-            "unknown": "#555555"
-        }
-        color = colors.get(role, "#555555")
+        # Canva colors
+        opponent_bg = "#d1f6ff"  # Mint/light blue
+        you_bg = "#423bff"  # Purple/blue (your design)
 
-        bubble = QWidget()
-        layout = QVBoxLayout(bubble)
-        layout.setContentsMargins(12, 8, 12, 8)
+        # Choose bubble color
+        bg_color = you_bg if sender == "You" else opponent_bg
 
+        bubble_wrapper = QWidget()
+        wrapper_layout = QHBoxLayout(bubble_wrapper)
+        wrapper_layout.setContentsMargins(10, 5, 10, 5)
+        wrapper_layout.setSpacing(0)
+
+        # Align depending on sender (you = right)
+        if sender == "You":
+            wrapper_layout.setAlignment(Qt.AlignRight)
+        else:
+            wrapper_layout.setAlignment(Qt.AlignLeft)
+
+        # Actual bubble card
+        bubble_card = QWidget()
+        bubble_card.setStyleSheet("""
+            background: transparent;
+            border-radius: 22px;
+        """)
+        card_layout = QVBoxLayout(bubble_card)
+        card_layout.setContentsMargins(12, 10, 12, 10)
+        card_layout.setSpacing(6)
+
+        # Timestamp
         timestamp = QTime.currentTime().toString("hh:mm AP")
-        sender_label = QLabel(f"{sender} • {timestamp}")
-        sender_label.setStyleSheet("color: gray; font-size: 12px;")
-        layout.addWidget(sender_label)
+        info_label = QLabel(f"{sender} • {timestamp}")
+        info_label.setStyleSheet("color: gray; font-size: 11px;")
+        card_layout.addWidget(info_label)
 
-        msg_label = QLabel()
-        msg_label.setWordWrap(True)
+        # Bubble content
+        msg = QLabel()
+        msg.setWordWrap(True)
 
         if is_sticker:
+            # Sticker image
             pix = QPixmap(text)
-            msg_label.setPixmap(pix.scaled(120, 120, Qt.KeepAspectRatio))
+            msg.setPixmap(
+                pix.scaled(180, 180, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            )
+
+            # Transparent bubble — stickers sit alone without colored bubble
+            msg.setStyleSheet("""
+                background: transparent;
+                border-radius: 0px;
+                padding: 0px;
+            """)
         else:
-            msg_label.setText(text)
+            # Normal text message bubble
+            msg.setText(text)
+            msg.setStyleSheet(f"""
+                background: {bg_color};
+                border-radius: 20px;
+                padding: 14px;
+                color: {'white' if sender == "You" else 'black'};
+                font-size: 17px;
+            """)
 
-        msg_label.setStyleSheet(f"""
-            background: {color};
-            color: white;
-            border-radius: 12px;
-            padding: 10px;
-            font-size: 16px;
-        """)
-        layout.addWidget(msg_label)
+        # FIX WIDTH — bubbles do NOT stretch full width
+        msg.setMaximumWidth(350)  # matches Canva compact size
 
-        bubble.setGraphicsEffect(QGraphicsOpacityEffect())
-        anim = QPropertyAnimation(bubble.graphicsEffect(), b"opacity")
-        anim.setDuration(250)
-        anim.setStartValue(0)
-        anim.setEndValue(1)
-        anim.setEasingCurve(QEasingCurve.OutQuad)
-        anim.start()
+        card_layout.addWidget(msg)
+        wrapper_layout.addWidget(bubble_card)
 
-        return bubble
+        return bubble_wrapper
 
     def append_chat(self, sender, role, text, is_sticker=False):
         bubble = self.make_bubble(sender, role, text, is_sticker)
         self.chat_layout.addWidget(bubble)
 
         # Auto-scroll
-        QTimer.singleShot(50, lambda: self.chat_scroll_area.verticalScrollBar().setValue(
-            self.chat_scroll_area.verticalScrollBar().maximum()
-        ))
+        def _scroll_bottom():
+            bar = self.chat_scroll_area.verticalScrollBar()
+            bar.setValue(bar.maximum())
+
+        QTimer.singleShot(50, _scroll_bottom)
 
     def send_chat(self):
         msg = self.chat_input.text().strip()
         if msg == "":
             return
 
-        # show it locally
+        # show locally
         self.append_chat("You", self.role, msg)
 
-        # protocol send
-        self.protocol.send_chat_message(
-            sender_name=self.role,
-            content_type=messages.ChatMessageType.TEXT,
-            message_text=msg
-        )
+        # PROTOCOL CORRECT SIGNATURE
+        try:
+            self.protocol.send_chat_message(
+                self.role,  # sender_name
+                messages.ChatMessageType.TEXT,  # content_type enum
+                msg  # content (text)
+            )
+        except Exception as e:
+            print("[CHAT] send_chat_message error:", e)
 
         self.chat_input.clear()
 
     def open_sticker_menu(self):
-        sticker_path = "stickers/s1.png"
+        sticker_path = "imgs/s1.png"
 
-        # Show locally
         self.append_chat("You", self.role, sticker_path, is_sticker=True)
 
-        self.protocol.send_chat_message(
-            sender_name=self.role,
-            content_type=messages.ChatMessageType.STICKER,
-            content=sticker_path
-        )
+        try:
+            self.protocol.send_chat_message(
+                self.role,
+                messages.ChatMessageType.STICKER,
+                sticker_path
+            )
+        except Exception as e:
+            print("[CHAT] send sticker error:", e)
 
     def poll_chat(self):
         chat = getattr(self.protocol, "last_chat_message", None)
 
-        if chat:
+        if isinstance(chat, dict):
             # Fire signal so GUI thread safely updates bubbles
             self.chat_received.emit(chat)
             self.protocol.last_chat_message = None
@@ -1644,16 +1726,20 @@ class BattleScreen(QWidget):
         QTimer.singleShot(80, self.poll_chat)
 
     def _handle_chat_on_main_thread(self, chat):
-        sender = chat.get("sender_name", "Unknown")
-        msg_type = chat.get("content_type", messages.ChatMessageType.TEXT)
-        text = chat.get("message_text") or chat.get("content") or ""
+        try:
+            sender = chat.get("sender_name", "Unknown")
+            msg_type = chat.get("content_type", messages.ChatMessageType.TEXT)
+            text = chat.get("message_text") or chat.get("content") or ""
 
-        role = sender.lower() if sender.lower() in ("host", "player", "spectator") else "unknown"
+            role = sender.lower() if sender.lower() in ("host", "player", "spectator") else "unknown"
 
-        if msg_type == messages.ChatMessageType.STICKER:
-            self.append_chat(sender, role, text, is_sticker=True)
-        else:
-            self.append_chat(sender, role, text)
+            if msg_type == messages.ChatMessageType.STICKER:
+                self.append_chat(sender, role, text, is_sticker=True)
+            else:
+                self.append_chat(sender, role, text)
+        except Exception as e:
+            print("[CHAT] handle_chat error:", e)
+
 
 
 
@@ -1767,6 +1853,29 @@ class HPBar(QWidget):
         )
 
         self.hp_text.setText(f"{current_hp} / {max_hp}")
+
+
+
+class EndingScreen(QWidget):
+    def __init__(self, parent, scaler, image_path):
+        super().__init__(parent)
+        self.scaler = scaler
+        self.setGeometry(0, 0, parent.width(), parent.height())
+
+        self.bg = QLabel(self)
+        pix = QPixmap(image_path)
+        self.bg.setPixmap(pix)
+        self.bg.setScaledContents(True)
+        self.bg.setGeometry(0, 0, self.width(), self.height())
+
+        self.show()
+
+        # auto return to title screen after 5 seconds
+        QTimer.singleShot(5000, self.return_to_title)
+
+    def return_to_title(self):
+        self.parent().go_to_title_screen()
+        self.deleteLater()
 
 
 
@@ -1914,6 +2023,32 @@ class MainWindow(QStackedWidget):
             opp_pix = host_pix
 
         self.battle_screen.load_sprites(my_pix, opp_pix)
+
+    def go_to_title_screen(self):
+
+        # SAFELY DELETE BATTLE SCREEN ONLY IF IT STILL EXISTS
+        if hasattr(self, "battle_screen") and self.battle_screen is not None:
+            try:
+                self.battle_screen.setParent(None)
+                self.battle_screen.deleteLater()
+            except RuntimeError:
+                pass
+
+            self.battle_screen = None
+
+        # Now go back to the title screen
+        self.show_title_screen()
+
+    def active_battle_ended(self):
+        # Safely remove battle screen only ONCE
+        if hasattr(self, "battle_screen") and self.battle_screen is not None:
+            try:
+                self.battle_screen.setParent(None)
+                self.battle_screen.deleteLater()
+            except RuntimeError:
+                pass  # already deleted safely
+
+            self.battle_screen = None
 
 # ---------------------------------------------
 # RUN APPLICATION

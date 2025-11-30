@@ -609,7 +609,15 @@ class GameProtocolHandler:
     def _handle_game_over(self, message_dict: dict, from_address: tuple):
         winner = message_dict.get("winner", "???")
         loser = message_dict.get("loser", "???")
+
         print(f"[PROTOCOL] GAME_OVER received. Winner={winner}, Loser={loser}")
+
+        # Store for GUI
+        self.last_received_game_over = {
+            "winner": winner,
+            "loser": loser
+        }
+
         self.game_state = "GAME_OVER"
 
     # -----------------------------
@@ -630,12 +638,38 @@ class GameProtocolHandler:
     def _handle_chat_message(self, message_dict: dict, from_address: tuple):
         sender = message_dict.get("sender_name", "Unknown")
         content_type = message_dict.get("content_type", "TEXT")
+
         if content_type == ChatMessageType.TEXT.value:
             text = message_dict.get("message_text", "")
-            print(f"[CHAT | {self.fmt_address(sender)}] {text}")
+            print(f"[CHAT | {self.fmt_address(from_address)}] {text}")
+
+            # Store for GUI
+            self.last_chat_message = {
+                "sender_name": sender,
+                "content_type": ChatMessageType.TEXT,
+                "message_text": text,
+                "content": text
+            }
+
         elif content_type == ChatMessageType.STICKER.value:
-            sticker_data_preview = message_dict.get("sticker_data", "")[:20] + "..."
-            print(f"[CHAT | {self.fmt_address(sender)}] <STICKER> {sticker_data_preview}")
+
+            sticker_path = (
+                    message_dict.get("content")
+                    or message_dict.get("sticker_data")
+                    or message_dict.get("sticker")
+                    or ""
+            )
+
+            print(f"[CHAT | {self.fmt_address(from_address)}] <STICKER> {sticker_path}")
+
+            # Store for GUI
+            self.last_chat_message = {
+                "sender_name": sender,
+                "content_type": ChatMessageType.STICKER,
+                "message_text": "",
+                "content": sticker_path
+            }
+
         else:
             print(f"[CHAT][{sender}] <UNKNOWN CONTENT TYPE>")
 
