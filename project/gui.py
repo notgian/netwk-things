@@ -1244,7 +1244,7 @@ class BattleScreen(QWidget):
         # ------------------------------------------------------------
         self.player_hp_bar = HPBar(self, self.scaler)
         self.player_hp_bar.setGeometry(
-            self.scaler.x(330),
+            self.scaler.x(250),
             self.scaler.y(500),
             self.scaler.w(350),
             self.scaler.h(80)
@@ -1252,7 +1252,7 @@ class BattleScreen(QWidget):
 
         self.opponent_hp_bar = HPBar(self, self.scaler)
         self.opponent_hp_bar.setGeometry(
-            self.scaler.x(720),
+            self.scaler.x(680),
             self.scaler.y(150),
             self.scaler.w(350),
             self.scaler.h(80)

@@ -7,7 +7,6 @@
     <list default="true" id="c55e01fa-0538-4266-9fde-335d39c024b2" name="Changes" comment="GUI (Almost Complete)">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/project/gui.py" beforeDir="false" afterPath="$PROJECT_DIR$/project/gui.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/project/imgs/battle_bg.png" beforeDir="false" afterPath="$PROJECT_DIR$/project/imgs/battle_bg.png" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -238,7 +237,8 @@
       <workItem from="1764370307167" duration="16123000" />
       <workItem from="1764396173003" duration="6953000" />
       <workItem from="1764418420271" duration="5527000" />
-      <workItem from="1764474202526" duration="5372000" />
+      <workItem from="1764474202526" duration="5591000" />
+      <workItem from="1764497648205" duration="633000" />
     </task>
     <task id="LOCAL-00001" summary="Game Protocols Done">
       <option name="closed" value="true" />
@@ -312,7 +312,15 @@
       <option name="project" value="LOCAL" />
       <updated>1764423856253</updated>
     </task>
-    <option name="localTasksCounter" value="10" />
+    <task id="LOCAL-00010" summary="GUI (Almost Complete)">
+      <option name="closed" value="true" />
+      <created>1764479636250</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1764479636250</updated>
+    </task>
+    <option name="localTasksCounter" value="11" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -330,6 +338,6 @@
     <SUITE FILE_PATH="coverage/CSNETWK$player.coverage" NAME="player Coverage Results" MODIFIED="1764043902839" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
     <SUITE FILE_PATH="coverage/CSNETWK$main.coverage" NAME="main Coverage Results" MODIFIED="1764389302786" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
     <SUITE FILE_PATH="coverage/CSNETWK$pokemon.coverage" NAME="pokemon Coverage Results" MODIFIED="1764038813344" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
-    <SUITE FILE_PATH="coverage/CSNETWK$gui.coverage" NAME="gui Coverage Results" MODIFIED="1764479492456" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
+    <SUITE FILE_PATH="coverage/CSNETWK$gui.coverage" NAME="gui Coverage Results" MODIFIED="1764498081349" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
   </component>
 </project>
