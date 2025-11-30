@@ -1,7 +1,8 @@
 import ast
+
 import messages
 from messages import CommunicationMode
-from messages import MessageType, ChatMessageType
+from messages import Message, MessageType, ChatMessageType
 from messages import (
     BattleSetupMessage,
     AttackAnnounceMessage,
@@ -22,7 +23,7 @@ class GameProtocolHandler:
     # -----------------------------
     #  INITIALIZATION & STATE
     # -----------------------------
-    def __init__(self, net_client, local_address, is_host=False):
+    def __init__(self, net_client, local_address, is_host=False, parent_user = None):
         self.net_client = net_client
 
         # RFC 5.2 / 5.3: battle states
@@ -54,6 +55,7 @@ class GameProtocolHandler:
 
         # cache Pokémon CSV so we don't reload repeatedly
         self._pokemon_db = None
+        self.parent_user = parent_user
 
         self.on_message_sent_hook = None
         # -------- GAME-LOOP HOOKS (for Host/Player to read) --------
@@ -108,28 +110,38 @@ class GameProtocolHandler:
             self._pokemon_db = load_pokemon_data()
         return self._pokemon_db
 
-    def _send_message(self, msg_obj: messages.Message):
-        if not self.opponent_addr:
+    def _send_message(self, msg_obj: messages.Message, to_address = None):
+        target_addr = to_address if to_address else self.opponent_addr
+
+        if not target_addr:
             print("[PROTOCOL] Cannot send message: opponent address not set.")
             return
 
         message_text = msg_obj.as_text()
         print(f"[PROTOCOL SEND]\n{message_text}\n---")
-        self.net_client.send_to(message_text, self.opponent_addr)
 
-        non_ack_messages = [
-            messages.MessageType.HANDSHAKE_REQUEST,
-            messages.MessageType.HANDSHAKE_RESPONSE,
-            messages.MessageType.SPECTATOR_REQUEST,
-            messages.MessageType.BATTLE_SETUP,
-            messages.MessageType.ACK
+        critical_messages = [
+            MessageType.ATTACK_ANNOUNCE, MessageType.DEFENSE_ANNOUNCE,
+            MessageType.CALCULATION_REPORT, MessageType.CALCULATION_CONFIRM,
+            MessageType.RESOLUTION_REQUEST, MessageType.GAME_OVER
         ]
 
-        if msg_obj.type not in non_ack_messages:
-            self.reliability_layer.await_ack(self.opponent_addr)
+        # Host broadcasts critical state changes to all peers (Joiner + Spectators)
+        if self.is_host and self.parent_user and msg_obj.type in critical_messages:
+            self.parent_user.broadcast_to_all(message_text, exclude_address=self.local_addr)
 
-        if self.on_message_sent_hook and msg_obj.type != messages.MessageType.ACK_REPLY:
-            self.on_message_sent_hook(message_text)
+            # Host awaits ACK only from the Joiner/Opponent for reliability, and not for GAME_OVER
+            if msg_obj.type != MessageType.GAME_OVER:
+                self.reliability_layer.await_ack(self.opponent_addr)
+            return
+
+        # P2P message (Player sends to Host, or non-critical message)
+        self.net_client.send_to(message_text, target_addr)
+
+        # Handle P2P reliability checks
+        if msg_obj.type not in [MessageType.HANDSHAKE_REQUEST, MessageType.HANDSHAKE_RESPONSE,
+                                MessageType.SPECTATOR_REQUEST, MessageType.BATTLE_SETUP, MessageType.ACK, MessageType.GAME_OVER]:
+            self.reliability_layer.await_ack(target_addr)
 
     # -----------------------------
     #  SETUP OPPONENT & MATCH DATA
@@ -274,21 +286,26 @@ class GameProtocolHandler:
         # Auto-send ACK for any message with a sequence_number (RFC 5.1)
         seq_str = message_dict.get("sequence_number")
         if seq_str is not None:
+            # FIX 1 (Reverted): Host MUST ACK Spectator direct messages (like chat)
+            # or the Spectator will disconnect. We rely on _handle_ack to ignore the
+            # return ACK from the Spectator later.
             try:
                 seq_num = int(seq_str)
-                self._send_ack(seq_num)
+                self._send_ack(seq_num, from_address)
             except ValueError:
-                pass  # ignore bad sequence numbers for ACK purposes
+                pass
 
     # -----------------------------
     #  PROTOCOL 5.1: RELIABILITY
     # -----------------------------
-    def _send_ack(self, sequence_number: int):
+    def _send_ack(self, sequence_number: int, to_address: tuple):
         ack_msg = AckReplyMessage(ack_number=sequence_number+1)
-        self._send_message(ack_msg)
+        self.net_client.send_to(ack_msg.as_text(), to_address)
 
     def _handle_ack(self, message_dict: dict, from_address: tuple):
         ack_num = int(message_dict.get("ack_number"))
+        if self.is_host and from_address in self.spectator_addrs:
+            return
         self.reliability_layer.handle_ack(from_address, ack_num)
         print(f"[PROTOCOL] Received ACK ack_num={ack_num} from {from_address}")
 
@@ -632,12 +649,18 @@ class GameProtocolHandler:
         content_type = message_dict.get("content_type", "TEXT")
         if content_type == ChatMessageType.TEXT.value:
             text = message_dict.get("message_text", "")
-            print(f"[CHAT | {self.fmt_address(sender)}] {text}")
+            print(f"[CHAT | {sender}] {text}")
         elif content_type == ChatMessageType.STICKER.value:
             sticker_data_preview = message_dict.get("sticker_data", "")[:20] + "..."
-            print(f"[CHAT | {self.fmt_address(sender)}] <STICKER> {sticker_data_preview}")
+            print(f"[CHAT | {sender}] <STICKER> {sticker_data_preview}")
         else:
             print(f"[CHAT][{sender}] <UNKNOWN CONTENT TYPE>")
+
+        if self.is_host and self.parent_user:
+            # Create full message text from dict to ensure integrity during re-broadcast
+            clean_dict = {k: v for k, v in message_dict.items() if k != 'message_type'}
+            original_message_text = Message(MessageType.CHAT_MESSAGE, **clean_dict).as_text()
+            self.parent_user.broadcast_to_all(original_message_text, exclude_address=from_address)
 
     # -----------------------------
     #  MESSAGE PARSING
