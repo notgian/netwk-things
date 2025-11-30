@@ -2,7 +2,11 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+<<<<<<<<< Temporary merge branch 1
+      <module fileurl="file://$PROJECT_DIR$/.idea/CSNETWK.iml" filepath="$PROJECT_DIR$/.idea/CSNETWK.iml" />
+=========
       <module fileurl="file://$PROJECT_DIR$/.idea/netwk-things.iml" filepath="$PROJECT_DIR$/.idea/netwk-things.iml" />
+>>>>>>>>> Temporary merge branch 2
     </modules>
   </component>
 </project>

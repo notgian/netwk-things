@@ -1,5 +1,6 @@
 import random
 from typing import Dict
+import messages
 
 # Fixed battle level
 LEVEL = 50
@@ -28,12 +29,14 @@ def deterministic_random(seed_value: int) -> float:
     return rng.uniform(RANDOM_MIN, RANDOM_MAX)
 
 
-def calculate_damage(match_data: dict, attacker_ip: str, defender_ip: str, move_name: str) -> int:
+def calculate_damage(match_data: dict, attacker_addr: str, defender_addr: str, move_name: str) -> int:
+    """
 
-
+        NOTE: EXPECTS A FORMATTED ADDRESS
+    """
     # ---- Retrieve attacker/defender data ----
-    attacker = match_data[attacker_ip]
-    defender = match_data[defender_ip]
+    attacker = match_data[attacker_addr]
+    defender = match_data[defender_addr]
     move = MOVES.get(move_name)
 
     if move is None:
@@ -87,3 +90,59 @@ def calculate_damage(match_data: dict, attacker_ip: str, defender_ip: str, move_
     print(f"[BATTLE_LOGIC] FINAL DAMAGE = {damage}")
 
     return damage
+
+
+# ---------------------------------------------------------
+# Helper functions (same as Host)
+# ---------------------------------------------------------
+
+def choose_pokemon(pokemon_db, input_function=input):
+    """Simple CLI Pokémon selection menu."""
+    names = list(pokemon_db.keys())
+    print("\n=== Choose Your Pokémon ===")
+    for i, name in enumerate(names):
+        print(f"{i+1}. {name}")
+
+    while True:
+        choice = input_function("Enter Pokémon name or number: ").strip()
+        if choice.isdigit():
+            idx = int(choice) - 1
+            if 0 <= idx < len(names):
+                return names[idx]
+
+        for n in names:
+            if n.lower() == choice.lower():
+                return n
+
+        print("Invalid Pokémon. Try again.")
+
+def choose_stat_boosts(input_function=input):
+    """Ask user for RFC-allowed stat boosts."""
+    print("\n=== Stat Boost Allocation ===")
+    while True:
+        try:
+            sa = int(input_function("Special Attack Boost Uses (0–5): "))
+            sd = int(input_function("Special Defense Boost Uses (0–5): "))
+            if 0 <= sa <= 5 and 0 <= sd <= 5:
+                return {
+                    "special_attack_uses": sa,
+                    "special_defense_uses": sd,
+                }
+        except ValueError:
+            pass
+        print("Invalid input. Enter numbers between 0 and 5.")
+
+def choose_communication_mode(input_function=input):
+    print("\n=== Communication Mode===")
+    while True:
+        print("Select communication mode")
+        print("1. P2P Mode")
+        print("2. Broadcast Mode")
+
+        inp = input_function()
+        if (inp == "1"):
+            return messages.CommunicationMode.P2P
+        elif (inp == "2"):
+            return messages.CommunicationMode.BROADCAST
+        else:
+            print("Please try again...")
