@@ -55,8 +55,7 @@ class Host(User):
                 continue
 
             # Handle incoming message
-            peers = self.spectator_addrs + [self.player_opponent_addr]
-            print(peers)
+            peers = self.protocol_handler.spectator_addrs + [self.protocol_handler.opponent_addr]
             if message_text and address in peers:
                 self.protocol_handler.process_message(message_text, address)
             elif message_text:
@@ -65,51 +64,49 @@ class Host(User):
     # =====================================================
     # NETWORK HANDLERS
     # =====================================================
-    def handle_player_join(self, address):
-        if self.player_opponent_addr is not None:
-            print(f"[Host] Player join attempt from {address} denied (game full).")
+    def handle_player_join(self, joiner_address):
+        if self.protocol_handler.opponent_addr is not None:
+            print(f"[Host] Player join attempt from {joiner_address} denied (game full).")
             return
 
-        print(f"[HOST] Player (P2) connected from {address}.")
-        self.player_opponent_addr = address
+        print(f"[HOST] Player (P2) connected from {joiner_address}.")
 
         seed = random.randint(1, 99999)
         match_data = {'seed': seed}
 
-        response_msg = messages.HandshakeResponseMessage(seed=seed)
-        self.net_client.send_to(response_msg.as_text(), self.player_opponent_addr)
-        print("[HOST] Player handshake complete.")
-
-        self.protocol_handler.set_opponent(self.player_opponent_addr, match_data, is_host=True)
+        self.protocol_handler.set_opponent(joiner_address, match_data, is_host=True)
         self.__start_listening__()
         self.asyncInput.start()
 
+        response_msg = messages.HandshakeResponseMessage(seed=seed)
+        self.net_client.send_to(response_msg.as_text(), joiner_address)
+        print("[HOST] Player handshake complete.")
         # TODO Get pokemon name from user
         # self.protocol_handler.start_battle_setup(pokemon_name="Pikachu") #example
 
-    def handle_spectator_join(self, address):
-        print(f"\n[HOST] Spectator connected from {address}.")
-        if address not in self.spectator_addrs:
-            self.spectator_addrs.append(address)
-            print(f"[HOST] Spectator added. Total: {len(self.spectator_addrs)}")
+    def handle_spectator_join(self, spectator_address):
+        print(f"\n[HOST] Spectator connected from {spectator_address}.")
+        if spectator_address not in self.protocol_handler.spectator_addrs:
+            self.spectator_addrs.append(spectator_address)
+            print(f"[HOST] Spectator added. Total: {len(self.protocol_handler.spectator_addrs)}")
 
         seed = self.protocol_handler.match_data.get('seed', 0)
 
         # 1. Handshake
         response_msg = messages.HandshakeResponseMessage(seed=seed)
 
-        self.net_client.send_to(response_msg.as_text(), address)
+        self.net_client.send_to(response_msg.as_text(), spectator_address)
         print("[HOST] Spectator handshake complete.")
 
         # 2. State Sync (kind of brute forcing it rn)
         if self.protocol_handler.game_state not in ['CONNECTED', 'SETUP']:
-            host_data = self.protocol_handler.match_data[self.protocol_handler.local_ddr]
+            host_data = self.protocol_handler.match_data[self.protocol_handler.local_addr]
             msg = messages.BattleSetupMessage(
                 communication_mode=messages.CommunicationMode.P2P,
                 pokemon_name=host_data['pokemon_name'],
                 stat_boosts=host_data['stat_boosts'],
             )
-            self.net_client.send_to(msg.as_text(), address)
+            self.net_client.send_to(msg.as_text(), spectator_address)
         if self.player_opponent_addr and self.player_opponent_addr[0] in self.protocol_handler.match_data:
             opp_data = self.protocol_handler.match_data[self.player_opponent_addr[0]]
             msg = messages.BattleSetupMessage(
@@ -117,7 +114,7 @@ class Host(User):
                 pokemon_name=opp_data['pokemon_name'],
                 stat_boosts=opp_data['stat_boosts'],
             )
-            self.net_client.send_to(msg.as_text(), address)
+            self.net_client.send_to(msg.as_text(), spectator_address)
 
         self.broadcast_to_spectators(msg.as_text())
 

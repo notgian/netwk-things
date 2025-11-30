@@ -1,6 +1,5 @@
 import ast
 import messages
-import config
 from messages import CommunicationMode
 from messages import MessageType, ChatMessageType
 from messages import (
@@ -15,6 +14,7 @@ from messages import (
     AckReplyMessage,
 )
 from pokemon import load_pokemon_data
+from reliability_layer import ReliabilityLayer
 
 
 class GameProtocolHandler:
@@ -26,7 +26,9 @@ class GameProtocolHandler:
         self.net_client = net_client
 
         # RFC 5.2 / 5.3: battle states
-        self.game_state = "CONNECTED"  # CONNECTED -> SETUP -> WAITING_FOR_MOVE -> PROCESSING_TURN -> GAME_OVER
+        # CONNECTED -> SETUP -> WAITING_FOR_MOVE -> PROCESSING_TURN -> GAME_OVER | TERMINATED
+        # NOTE: Connected is a misnomer, as even a host waiting for a client is considered "CONNECTED" but I will not change this just in case
+        self.game_state = "CONNECTED"
 
         # RFC: shared battle state, keyed by IP strings plus a 'seed'
         # {
@@ -37,31 +39,23 @@ class GameProtocolHandler:
         self.match_data = {}
 
         # networking / identity
-        self.local_addr = local_address
         self.is_host = is_host
-
+        self.local_addr = local_address
         self.opponent_addr = None
-
+        self.current_turn_addr = None
         self.host_addr = None
         self.joiner_addr = None
+        self.spectator_addrs = []
 
-        self.on_message_sent_hook = None
-
-        # communication mode (P2P / BROADCAST – RFC 3 & 4.4)
         self.communication_mode = None
-
-        # RFC 5.1: reliability layer — sequence numbers
-        self.next_sequence_number = 1
 
         # Track last local calculation so CALCULATION_REPORT / CONFIRM / RESOLUTION_REQUEST make sense
         self.last_local_calculation = None
 
-        # whose turn (IP string), used in WAITING_FOR_MOVE / PROCESSING_TURN
-        self.current_turn_addr = None
-
         # cache Pokémon CSV so we don't reload repeatedly
         self._pokemon_db = None
 
+        self.on_message_sent_hook = None
         # -------- GAME-LOOP HOOKS (for Host/Player to read) --------
         # Last announced attack (attacker_addr, move_name)
         self.last_attack_announce = None
@@ -72,15 +66,43 @@ class GameProtocolHandler:
         # Last status_message received in a CALCULATION_REPORT (for printing)
         self.last_received_status = None
 
+        self.calc_confirm_local = False
+        self.calc_confirm_remote = False
+
+        self.reliability_layer = ReliabilityLayer(self.disconnect)
+        self.reliability_layer.start()
+
+    def disconnect(self, address: tuple):
+        print(f"[PROTOCOL] {self.fmt_address(address)} disconnected!")
+
+        potential_peers = [self.host_addr, self.joiner_addr] + self.spectator_addrs
+
+        # putting in an edge case but it realistically should never happen
+        if address not in potential_peers:
+            print("[PROTOCOL] Unknown address disconnected? This should not be happening!")
+        elif address == self.joiner_addr or address == self.host_addr:
+            print("[PROTOCOL] Opponent Disconnected.")
+            self.end_game("Opponent disconnected")
+            return
+        elif address in self.spectator_addrs:
+            spectator_i = self.spectator_addrs.index(address)
+            disconnected_spectator = self.spectator_addrs.pop(spectator_i)
+
+        print(f"[PROTOCOL] Spectator disconnected ({self.fmt_address(disconnected_spectator)})")
+
+    def end_game(self, reason=""):
+        if self.game_state == "TERMINATED":
+            return
+        self.reliability_layer.stop()
+        self.game_state = "TERMINATED"
+        print("[PROTOCOL] GAME ENDED.")
+        if reason == "":
+            return
+        print(f"           REASON: {reason}")
+
     # -----------------------------
     #  UTILITY HELPERS
     # -----------------------------
-
-    def _next_seq(self) -> int:
-        seq = self.next_sequence_number
-        self.next_sequence_number += 1
-        return seq
-
     def _get_pokemon_db(self):
         if self._pokemon_db is None:
             self._pokemon_db = load_pokemon_data()
@@ -94,6 +116,17 @@ class GameProtocolHandler:
         message_text = msg_obj.as_text()
         print(f"[PROTOCOL SEND]\n{message_text}\n---")
         self.net_client.send_to(message_text, self.opponent_addr)
+
+        non_ack_messages = [
+            messages.MessageType.HANDSHAKE_REQUEST,
+            messages.MessageType.HANDSHAKE_RESPONSE,
+            messages.MessageType.SPECTATOR_REQUEST,
+            messages.MessageType.BATTLE_SETUP,
+            messages.MessageType.ACK
+        ]
+
+        if msg_obj.type not in non_ack_messages:
+            self.reliability_layer.await_ack(self.opponent_addr)
 
         if self.on_message_sent_hook and msg_obj.type != messages.MessageType.ACK_REPLY:
             self.on_message_sent_hook(message_text)
@@ -213,6 +246,31 @@ class GameProtocolHandler:
             print("[PROTOCOL] Received malformed message (no message_type).")
             return
 
+        # Dispatch based on message_type string value
+        if msg_type_str == MessageType.BATTLE_SETUP.value:
+            self._handle_battle_setup(message_dict, from_address)
+
+        elif msg_type_str == MessageType.ATTACK_ANNOUNCE.value:
+            self._handle_attack_announce(message_dict, from_address)
+        elif msg_type_str == MessageType.DEFENSE_ANNOUNCE.value:
+            self._handle_defense_announce(message_dict, from_address)
+        elif msg_type_str == MessageType.CALCULATION_REPORT.value:
+            self._handle_calculation_report(message_dict, from_address)
+        elif msg_type_str == MessageType.CALCULATION_CONFIRM.value:
+            self._handle_calculation_confirm(message_dict, from_address)
+        elif msg_type_str == MessageType.RESOLUTION_REQUEST.value:
+            self._handle_resolution_request(message_dict, from_address)
+        elif msg_type_str == MessageType.GAME_OVER.value:
+            self._handle_game_over(message_dict, from_address)
+        elif msg_type_str == MessageType.CHAT_MESSAGE.value:
+            self._handle_chat_message(message_dict, from_address)
+        elif msg_type_str == MessageType.ACK.value:
+            self._handle_ack(message_dict, from_address)
+        elif msg_type_str == MessageType.SPECTATOR_REQUEST.value:
+            self._handle_spectator_request(message_dict, from_address)
+        else:
+            print(f"[PROTOCOL] Unknown or unhandled message_type: {msg_type_str}")
+
         # Auto-send ACK for any message with a sequence_number (RFC 5.1)
         seq_str = message_dict.get("sequence_number")
         if seq_str is not None:
@@ -222,47 +280,17 @@ class GameProtocolHandler:
             except ValueError:
                 pass  # ignore bad sequence numbers for ACK purposes
 
-        # Dispatch based on message_type string value
-        if msg_type_str == MessageType.BATTLE_SETUP.value:
-            self._handle_battle_setup(message_dict, from_address)
-
-        elif msg_type_str == MessageType.ATTACK_ANNOUNCE.value:
-            self._handle_attack_announce(message_dict, from_address)
-
-        elif msg_type_str == MessageType.DEFENSE_ANNOUNCE.value:
-            self._handle_defense_announce(message_dict, from_address)
-
-        elif msg_type_str == MessageType.CALCULATION_REPORT.value:
-            self._handle_calculation_report(message_dict, from_address)
-
-        elif msg_type_str == MessageType.CALCULATION_CONFIRM.value:
-            self._handle_calculation_confirm(message_dict, from_address)
-
-        elif msg_type_str == MessageType.RESOLUTION_REQUEST.value:
-            self._handle_resolution_request(message_dict, from_address)
-
-        elif msg_type_str == MessageType.GAME_OVER.value:
-            self._handle_game_over(message_dict, from_address)
-        elif msg_type_str == MessageType.CHAT_MESSAGE.value:
-            self._handle_chat_message(message_dict, from_address)
-        elif msg_type_str == MessageType.ACK.value:
-            self._handle_ack_reply(message_dict, from_address)
-        elif msg_type_str == MessageType.SPECTATOR_REQUEST.value:
-            self._handle_spectator_request(message_dict, from_address)
-
-        else:
-            print(f"[PROTOCOL] Unknown or unhandled message_type: {msg_type_str}")
-
     # -----------------------------
     #  PROTOCOL 5.1: RELIABILITY
     # -----------------------------
     def _send_ack(self, sequence_number: int):
-        ack_msg = AckReplyMessage(ack_number=sequence_number)
+        ack_msg = AckReplyMessage(ack_number=sequence_number+1)
         self._send_message(ack_msg)
 
-    def _handle_ack_reply(self, message_dict: dict, from_address: tuple):
-        ack_num = message_dict.get("ack_number")
-        print(f"[PROTOCOL] Received ACK for seq={ack_num} from {from_address}")
+    def _handle_ack(self, message_dict: dict, from_address: tuple):
+        ack_num = int(message_dict.get("ack_number"))
+        self.reliability_layer.handle_ack(from_address, ack_num)
+        print(f"[PROTOCOL] Received ACK ack_num={ack_num} from {from_address}")
 
     # -----------------------------
     #  PROTOCOL 4.4: BATTLE_SETUP (RECEIVE)
@@ -299,7 +327,7 @@ class GameProtocolHandler:
         # overwrite the communication_mode with the host's chosen mode
         msg_cmode = message_dict["communication_mode"]
         if (self.joiner_addr == self.local_addr):
-            if self.communication_mode is not None:
+            if self.communication_mode is not None and msg_cmode != self.communication_mode.value:
                 print(f"Host chose a different communication mode. Setting to {msg_cmode}")
             if msg_cmode == messages.CommunicationMode.BROADCAST.value:
                 self.communication_mode = messages.CommunicationMode.BROADCAST
@@ -330,7 +358,8 @@ class GameProtocolHandler:
             print("[PROTOCOL] It is not our turn to attack.")
             return
 
-        seq = self._next_seq()
+        # seq = self._next_seq()
+        seq = self.reliability_layer.get_sequence(self.get_opponent_addr())
         msg = AttackAnnounceMessage(move_name=move_name, sequence_number=seq)
         self._send_message(msg)
 
@@ -339,9 +368,6 @@ class GameProtocolHandler:
             "attacker_address": f"{self.fmt_address(self.local_addr)}",
             "move_name": move_name,
         }
-
-        # After announcing, we wait for DEFENSE_ANNOUNCE & move to PROCESSING_TURN on receipt (RFC 5.2)
-        print(f"[PROTOCOL] ATTACK_ANNOUNCE sent (move={move_name}, seq={seq}).")
 
     def _handle_attack_announce(self, message_dict: dict, from_address: tuple):
         move_name = message_dict.get("move_name", "UnknownMove")
@@ -360,10 +386,10 @@ class GameProtocolHandler:
     #  PROTOCOL 4.6: DEFENSE_ANNOUNCE
     # -----------------------------
     def send_defense_announce(self):
-        seq = self._next_seq()
+        # seq = self._next_seq()
+        seq = self.reliability_layer.get_sequence(self.get_opponent_addr())
         msg = DefenseAnnounceMessage(sequence_number=seq)
         self._send_message(msg)
-        print(f"[PROTOCOL] DEFENSE_ANNOUNCE sent (seq={seq}).")
 
         # RFC 5.2 / 5.3: after defense announce, both peers move to PROCESSING_TURN
         self.game_state = "PROCESSING_TURN"
@@ -393,7 +419,8 @@ class GameProtocolHandler:
         (battleLogic + main loop). Handler only wraps & sends them.
         """
 
-        seq = self._next_seq()
+        # seq = self._next_seq()
+        seq = self.reliability_layer.get_sequence(self.get_opponent_addr())
         msg = CalculationReportMessage(
             attacker=attacker,
             move_used=move_used,
@@ -414,12 +441,12 @@ class GameProtocolHandler:
         }
 
         self._send_message(msg)
-        print(f"[PROTOCOL] CALCULATION_REPORT sent (seq={seq}).")
+        print("[PROTOCOL] CONFIRMING CALCULATION...")
 
-        while not (self.last_local_calculation and self.last_remote_calculation):
+        while (self.last_remote_calculation is None or self.last_local_calculation is None):
             pass
 
-        self._handle_calculation_resolution()
+        self.do_calculation_resolution()
 
     def _handle_calculation_report(self, message_dict: dict, from_address: tuple):
         print(f"[PROTOCOL] Received CALCULATION_REPORT from {from_address}.")
@@ -450,30 +477,26 @@ class GameProtocolHandler:
         self.last_remote_calculation = opp_calc
         self.last_received_status = message_dict.get("status_message", "")
 
-    def _handle_calculation_resolution(self):
-
+    def do_calculation_resolution(self):
         if self.last_remote_calculation == self.last_local_calculation:
             # All good – send CALCULATION_CONFIRM
             print("[PROTOCOL] Calculation matches. Sending CALCULATION_CONFIRM.")
-            seq = self._next_seq()
+            # seq = self._next_seq()
+            seq = self.reliability_layer.get_sequence(self.get_opponent_addr())
             confirm = CalculationConfirmMessage(sequence_number=seq)
             self._send_message(confirm)
 
-            print(
-                f"[PROTOCOL] STATE -> WAITING_FOR_MOVE. "
-                f"Next turn: {self.fmt_address(self.current_turn_addr)}"
-            )
+            self.calc_confirm_local = True
+            while self.calc_confirm_local is None or self.calc_confirm_remote is None:
+                pass
 
-            # Clean up for next turn
-            self.last_local_calculation = None
-            self.last_remote_calculation = None
-            self.last_defense_announce = False
-            self.last_attack_announce = None
+            self.move_turnover()
         else:
             # Discrepancy → Send RESOLUTION_REQUEST first (RFC 5)
             print("[PROTOCOL] Calculation mismatch. Sending RESOLUTION_REQUEST.")
 
-            seq = self._next_seq()
+            # seq = self._next_seq()
+            seq = self.reliability_layer.get_sequence(self.get_opponent_addr())
             req = ResolutionRequestMessage(
                 attacker=self.last_local_calculation["attacker"],
                 move_used=self.last_local_calculation["move_used"],
@@ -490,19 +513,7 @@ class GameProtocolHandler:
     # -----------------------------
     def _handle_calculation_confirm(self, message_dict: dict, from_address: tuple):
         print(f"[PROTOCOL] Received CALCULATION_CONFIRM from {from_address}.")
-        self.game_state = "WAITING_FOR_MOVE"
-        self.current_turn_addr = self.host_addr if self.current_turn_addr == self.joiner_addr else self.joiner_addr
-
-        print(
-            f"[PROTOCOL] STATE -> WAITING_FOR_MOVE. "
-            f"Next turn: {self.fmt_address(self.current_turn_addr)}"
-        )
-
-        # Clean up for next turn (mirror of success path)
-        self.last_local_calculation = None
-        self.last_remote_calculation = None
-        self.last_defense_announce = False
-        self.last_attack_announce = None
+        self.calc_confirm_remote = True
 
     # -----------------------------
     #  PROTOCOL 4.9: RESOLUTION_REQUEST
@@ -528,7 +539,8 @@ class GameProtocolHandler:
                 "[PROTOCOL] No local calculation stored during RESOLUTION_REQUEST. "
                 "Cannot compare; terminating match for safety."
             )
-            seq = self._next_seq()
+            # seq = self._next_seq()
+            seq = self.reliability_layer.get_sequence(self.get_opponent_addr())
             msg = GameOverMessage(
                 winner="NONE",
                 loser="NONE",
@@ -544,7 +556,8 @@ class GameProtocolHandler:
             print("[PROTOCOL] TERMINATING MATCH (RFC 4.9 / 5.3).")
 
             # Notify opponent with GAME_OVER — no winner/loser due to desync
-            seq = self._next_seq()
+            # seq = self._next_seq()
+            seq = self.reliability_layer.get_sequence(self.get_opponent_addr())
             msg = GameOverMessage(
                 winner="NONE",
                 loser="NONE",
@@ -584,12 +597,14 @@ class GameProtocolHandler:
     #  PROTOCOL 4.10: GAME_OVER
     # -----------------------------
     def send_game_over(self, winner: str, loser: str):
-        seq = self._next_seq()
+        # seq = self._next_seq()
+        seq = self.reliability_layer.get_sequence(self.get_opponent_addr())
         msg = GameOverMessage(winner=winner, loser=loser, sequence_number=seq)
         self._send_message(msg)
         print(f"[PROTOCOL] GAME_OVER sent (winner={winner}, loser={loser}, seq={seq}).")
 
         self.game_state = "GAME_OVER"
+        self.end_game("GAME OVER")
 
     def _handle_game_over(self, message_dict: dict, from_address: tuple):
         winner = message_dict.get("winner", "???")
@@ -601,7 +616,8 @@ class GameProtocolHandler:
     #  PROTOCOL 4.11: CHAT_MESSAGE
     # -----------------------------
     def send_chat_message(self, sender_name: str, content_type: ChatMessageType, content):
-        seq = self._next_seq()
+        # seq = self._next_seq()
+        seq = self.reliability_layer.get_sequence(self.get_opponent_addr())
         msg = ChatMessage(
             sender_name=sender_name,
             content_type=content_type,
@@ -616,10 +632,10 @@ class GameProtocolHandler:
         content_type = message_dict.get("content_type", "TEXT")
         if content_type == ChatMessageType.TEXT.value:
             text = message_dict.get("message_text", "")
-            print(f"[CHAT][{sender}] {text}")
+            print(f"[CHAT | {self.fmt_address(sender)}] {text}")
         elif content_type == ChatMessageType.STICKER.value:
             sticker_data_preview = message_dict.get("sticker_data", "")[:20] + "..."
-            print(f"[CHAT][{sender}] <STICKER> {sticker_data_preview}")
+            print(f"[CHAT | {self.fmt_address(sender)}] <STICKER> {sticker_data_preview}")
         else:
             print(f"[CHAT][{sender}] <UNKNOWN CONTENT TYPE>")
 
@@ -640,6 +656,26 @@ class GameProtocolHandler:
     # -----------------------------
     #  GAME-LOOP HELPER METHODS
     # -----------------------------
+
+    def move_turnover(self):
+        self.current_turn_addr = (
+            self.host_addr if self.current_turn_addr == self.joiner_addr else self.joiner_addr
+        )
+
+        # Clean up for next turn
+        self.last_local_calculation = None
+        self.last_remote_calculation = None
+        self.last_defense_announce = False
+        self.last_attack_announce = None
+        self.calc_confirm_local = False
+        self.calc_confirm_local = False
+
+        self.game_state = "WAITING_FOR_MOVE"
+
+        print(
+            f"[PROTOCOL] STATE -> WAITING_FOR_MOVE. "
+            f"Next turn: {self.fmt_address(self.current_turn_addr)}"
+        )
 
     def fmt_address(self, address):
         return f"{address[0]}:{address[1]}"

@@ -15,9 +15,6 @@ class User:
         if not self.net_client.bind_socket(local_ip, local_port):
             exit()
 
-        self.player_opponent_addr = None
-        self.spectator_addrs = []
-
         self.protocol_handler = GameProtocolHandler(self.net_client, (local_ip, local_port), is_host=True)
 
         self.is_listening = False
@@ -60,8 +57,14 @@ class User:
                     pass  # wait until game exists setup stage
 
             elif protocol.game_state == "GAME_OVER":
-                print("\n=== GAME OVER ===")
-                break
+                print("\n=== GAME END ===")
+
+            elif protocol.game_state in ["TERMINATED"]:
+                self.game_running = False
+                self.__stop_listening__()
+                self.asyncInput.stop()
+                print("Press enter to continue...")
+
 
     def handle_setup_phase(self):
         protocol = self.protocol_handler
@@ -145,7 +148,7 @@ class User:
         new_hp = max(0, old_hp - dmg)
         protocol.set_hp(defender_addr, new_hp)
 
-        status = f"{move_name} dealt {dmg} damage! {defender_addr[0]}:{defender_addr[1]} HP is now {new_hp}"
+        status = f"{move_name} dealt {dmg} damage! {defender_addr} HP is now {new_hp}"
 
         # Send calculation report
         protocol.send_calculation_report(
@@ -188,8 +191,7 @@ class User:
             message_text, address = self.net_client.receive_from()
 
             # Handle incoming message
-            peers = self.spectator_addrs + [ self.player_opponent_addr ]
-            print(peers)
+            peers = self.protocol_handler.spectator_addrs + [self.protocol_handler.opponent_addr]
             if message_text and address in peers:
                 self.protocol_handler.process_message(message_text, address)
             elif message_text:
