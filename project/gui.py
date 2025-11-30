@@ -4,7 +4,7 @@ import sys
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton,
     QStackedWidget, QVBoxLayout, QGraphicsDropShadowEffect,
-    QScrollArea, QFrame, QSizePolicy, QGridLayout, QLineEdit
+    QScrollArea, QFrame, QSizePolicy, QGridLayout, QLineEdit, QHBoxLayout
 )
 
 from PyQt5.QtGui import (
@@ -12,7 +12,7 @@ from PyQt5.QtGui import (
 )
 
 from PyQt5.QtCore import (
-    Qt, pyqtSignal, QThread
+    Qt, pyqtSignal, QThread, QSize
 )
 
 import warnings
@@ -1202,7 +1202,7 @@ class BattleScreen(QWidget):
         self.parent = parent
         self.scaler = scaler
         self.protocol = protocol_handler
-        self.role = role   # "host", "player", "spectator"
+        self.role = role   # host, player, spectator
 
         self.init_ui()
 
@@ -1219,10 +1219,8 @@ class BattleScreen(QWidget):
         self.bg.setGeometry(0, 0, self.width(), self.height())
 
         # ------------------------------------------------------------
-        # BATTLEFIELD AREA
+        # BATTLEFIELD SPRITES
         # ------------------------------------------------------------
-
-        # Player Pokémon sprite (bottom-left)
         self.player_sprite = QLabel(self)
         self.player_sprite.setGeometry(
             self.scaler.x(350.3),
@@ -1232,7 +1230,6 @@ class BattleScreen(QWidget):
         )
         self.player_sprite.setScaledContents(True)
 
-        # Opponent Pokémon sprite (top-right)
         self.opponent_sprite = QLabel(self)
         self.opponent_sprite.setGeometry(
             self.scaler.x(795.9),
@@ -1245,58 +1242,113 @@ class BattleScreen(QWidget):
         # ------------------------------------------------------------
         # HP BARS
         # ------------------------------------------------------------
-        self.player_hp_bar = HPBar(self, self.scaler, is_player=True)
+        self.player_hp_bar = HPBar(self, self.scaler)
         self.player_hp_bar.setGeometry(
-            self.scaler.x(361.2),
-            self.scaler.y(504.2),
-            self.scaler.w(300),
-            self.scaler.h(50)
+            self.scaler.x(330),
+            self.scaler.y(500),
+            self.scaler.w(350),
+            self.scaler.h(80)
         )
 
-        self.opponent_hp_bar = HPBar(self, self.scaler, is_player=False)
+        self.opponent_hp_bar = HPBar(self, self.scaler)
         self.opponent_hp_bar.setGeometry(
-            self.scaler.x(754.5),
-            self.scaler.y(158.8),
-            self.scaler.w(300),
-            self.scaler.h(50)
+            self.scaler.x(720),
+            self.scaler.y(150),
+            self.scaler.w(350),
+            self.scaler.h(80)
         )
 
         # ------------------------------------------------------------
-        # MOVE PANEL (only host/player)
+        # MOVE PANEL
         # ------------------------------------------------------------
         self.move_panel = QWidget(self)
         self.move_panel.setGeometry(
-            self.scaler.x(100),
-            self.scaler.y(780),
-            self.scaler.w(550),
-            self.scaler.h(200)
+            self.scaler.x(59.4),
+            self.scaler.y(798.9),
+            self.scaler.w(1192),
+            self.scaler.h(213)
         )
-        self.move_panel.setStyleSheet("background: #0d1a8c; border-radius: 25px;")
+        self.move_panel.setStyleSheet("""
+            background: #0d1a8c;
+            border-radius: 25px;
+        """)
 
-        grid = QGridLayout(self.move_panel)
-        grid.setContentsMargins(20, 20, 20, 20)
+        # ---------------- PROMPT BOX ----------------
+        self.prompt_box = QLabel("All In Game prompts will be here", self.move_panel)
+        self.prompt_box.setWordWrap(True)
+        self.prompt_box.setGeometry(
+            self.scaler.x(75.4 - 59.4),
+            self.scaler.y(834.9 - 818.9),
+            self.scaler.w(627.4),
+            self.scaler.h(179.1)
+        )
+        self.prompt_box.setStyleSheet("""
+            background: #101058;
+            border-radius: 20px;
+            padding: 20px;
+            color: white;
+            font-size: 20px;
+        """)
 
-        self.move_btns = {}
-        move_names = ["Tackle", "Ember", "Quick Attack", "Water Gun"]
-        for i, m in enumerate(move_names):
-            btn = QPushButton(m)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background: #ff3b30;
-                    color: white;
-                    font-weight: bold;
-                    border-radius: 20px;
-                    padding: 15px;
-                }
-                QPushButton:hover {
-                    background: #ff6a60;
-                }
-            """)
-            btn.clicked.connect(lambda _, mv=m: self.send_move(mv))
-            self.move_btns[m] = btn
-            grid.addWidget(btn, i // 2, i % 2)
+        # ---------------- BUTTONS ----------------
+        button_style = """
+            QPushButton {
+                background: #ff3b30;
+                color: white;
+                font-weight: bold;
+                border-radius: 25px;
+                font-size: 26px;
+            }
+            QPushButton:hover {
+                background: #ff6a60;
+            }
+        """
 
-        # Hide for spectator
+        # TACKLE
+        self.btn_tackle = QPushButton("Tackle", self.move_panel)
+        self.btn_tackle.setGeometry(
+            self.scaler.x(712.8 - 59.4),
+            self.scaler.y(836.6 - 818.9),
+            self.scaler.w(255.2),
+            self.scaler.h(79.2)
+        )
+        self.btn_tackle.setStyleSheet(button_style)
+        self.btn_tackle.clicked.connect(lambda: self.send_move("Tackle"))
+
+        # QUICK ATTACK
+        self.btn_quick = QPushButton("Quick Attack", self.move_panel)
+        self.btn_quick.setGeometry(
+            self.scaler.x(715.7 - 59.4),
+            self.scaler.y(934.8 - 818.9),
+            self.scaler.w(255.2),
+            self.scaler.h(79.2)
+        )
+        self.btn_quick.setStyleSheet(button_style)
+        self.btn_quick.clicked.connect(lambda: self.send_move("Quick Attack"))
+
+        # EMBER
+        self.btn_ember = QPushButton("Ember", self.move_panel)
+        self.btn_ember.setGeometry(
+            self.scaler.x(976.2 - 59.4),
+            self.scaler.y(836.6 - 818.9),
+            self.scaler.w(255.2),
+            self.scaler.h(79.2)
+        )
+        self.btn_ember.setStyleSheet(button_style)
+        self.btn_ember.clicked.connect(lambda: self.send_move("Ember"))
+
+        # WATER GUN
+        self.btn_water = QPushButton("Water Gun", self.move_panel)
+        self.btn_water.setGeometry(
+            self.scaler.x(976.2 - 59.4),
+            self.scaler.y(935 - 818.9),
+            self.scaler.w(255.2),
+            self.scaler.h(79.2)
+        )
+        self.btn_water.setStyleSheet(button_style)
+        self.btn_water.clicked.connect(lambda: self.send_move("Water Gun"))
+
+        # Hide the whole panel if spectator
         if self.role == "spectator":
             self.move_panel.hide()
 
@@ -1305,124 +1357,197 @@ class BattleScreen(QWidget):
         # ------------------------------------------------------------
         self.chat_panel = QWidget(self)
         self.chat_panel.setGeometry(
-            self.scaler.x(1250),
-            self.scaler.y(50),
-            self.scaler.w(600),
-            self.scaler.h(900)
+            self.scaler.x(1316.4),
+            self.scaler.y(16.8),
+            self.scaler.w(585.6),
+            self.scaler.h(1008.1)
         )
-        self.chat_panel.setStyleSheet("background: #c9dfe1; border-radius: 30px;")
+        self.chat_panel.setStyleSheet("""
+            background: #ffffff;
+            border-radius: 35px;
+        """)
 
-        # For now: simple placeholder
-        self.chat_label = QLabel("Chat will be here", self.chat_panel)
-        self.chat_label.setGeometry(20, 20, 300, 30)
+        # Chat scroll area
+        self.chat_scroll = QLabel(" ", self.chat_panel)
+        self.chat_scroll.setGeometry(
+            self.scaler.x(1333.4 - 1316.4),
+            self.scaler.y(32.8 - 16.8),
+            self.scaler.w(552.5),
+            self.scaler.h(876.7)
+        )
+        self.chat_scroll.setStyleSheet("""
+            background: #b0cbcb;
+            border-radius: 25px;
+        """)
 
-    # -----------------------------------------------------------------
-    # SEND MOVE TO PROTOCOL
-    # -----------------------------------------------------------------
+        # Input bar
+        self.chat_input = QLineEdit(self.chat_panel)
+        self.chat_input.setGeometry(
+            self.scaler.x(1341 - 1316.4),
+            self.scaler.y(964 - 46.8),
+            self.scaler.w(380.2),
+            self.scaler.h(64.9)
+        )
+        self.chat_input.setStyleSheet("""
+            background: #b0cbcb;
+            border-radius: 30px;
+            padding-left: 20px;
+            font-size: 22px;
+        """)
+
+        # Sticker button
+        self.sticker_btn = QPushButton(self.chat_panel)
+        self.sticker_btn.setGeometry(
+            self.scaler.x(1731.2 - 1316.4),
+            self.scaler.y(963.8 - 46.8),
+            self.scaler.w(64.9),
+            self.scaler.h(64.9)
+        )
+        self.sticker_btn.setIcon(QIcon("imgs/sticker_btn.png"))
+        self.sticker_btn.setIconSize(QSize(self.scaler.w(64.9), self.scaler.h(64.9)))
+        self.sticker_btn.setStyleSheet("border: none;")
+
+        # Send button
+        self.send_btn = QPushButton(self.chat_panel)
+        self.send_btn.setGeometry(
+            self.scaler.x(1806.4 - 1316.4),
+            self.scaler.y(963.8 - 46.8),
+            self.scaler.w(64.9),
+            self.scaler.h(64.9)
+        )
+        self.send_btn.setIcon(QIcon("imgs/send_btn.png"))
+        self.send_btn.setIconSize(QSize(self.scaler.w(64.9), self.scaler.h(64.9)))
+        self.send_btn.setStyleSheet("border: none;")
+
+    # ------------------ SEND MOVE ------------------
     def send_move(self, move_name):
         print(f"[GUI] Player selected move: {move_name}")
         self.protocol.send_attack_announce(move_name)
 
-    # -----------------------------------------------------------------
-    # UPDATE SPRITES (called once AFTER match_data is known)
-    # -----------------------------------------------------------------
+    # ------------------ LOAD SPRITES ------------------
     def load_sprites(self, player_pixmap, opponent_pixmap):
         self.player_sprite.setPixmap(player_pixmap)
         self.opponent_sprite.setPixmap(opponent_pixmap)
 
-    # -----------------------------------------------------------------
-    # UPDATE HP BARS DURING BATTLE
-    # -----------------------------------------------------------------
+    # ------------------ UPDATE HP ------------------
     def update_hp(self, ip, new_hp):
-        # to be implemented later
         pass
+
 
 
 # ------------------------------------------------------------
 # HP BAR CLASS
 # ------------------------------------------------------------
 class HPBar(QWidget):
-    def __init__(self, parent, scaler, is_player=True):
+    def __init__(self, parent, scaler):
         super().__init__(parent)
         self.scaler = scaler
-        self.is_player = is_player
 
-        # Background area (transparent)
         self.setStyleSheet("background: transparent;")
 
-        # Pokémon name label
+        # Pokémon Name
         self.name_label = QLabel("Pokemon", self)
         self.name_label.setStyleSheet("""
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-        """)
-
-        # Level label (always 50)
-        self.level_label = QLabel("50", self)
-        self.level_label.setStyleSheet("""
-            color: white;
-            font-size: 20px;
-            font-weight: bold;
-        """)
-
-        # HP bar background
-        self.hp_bg = QLabel(self)
-        self.hp_bg.setStyleSheet("""
-            background: #1e3fa8;
-            border-radius: 10px;
-        """)
-
-        # HP bar (foreground fill)
-        self.hp_fill = QLabel(self)
-        self.hp_fill.setStyleSheet("""
-            background: #51ff74;
-            border-radius: 10px;
-        """)
-
-        # HP text
-        self.hp_text = QLabel("50/50", self)
-        self.hp_text.setStyleSheet("""
             color: white;
             font-size: 18px;
             font-weight: bold;
         """)
 
+        # OUTER BORDER
+        self.border = QLabel(self)
+        self.border.setStyleSheet("""
+            background: #181368;
+            border-radius: 10px;
+        """)
+
+        # HP BACKGROUND
+        self.hp_bg = QLabel(self)
+        self.hp_bg.setStyleSheet("""
+            background: #315ba0;
+            border-radius: 7px;
+        """)
+
+        # HP FILL
+        self.hp_fill = QLabel(self)
+        self.hp_fill.setStyleSheet("""
+            background: #51ff74;
+            border-radius: 7px;
+        """)
+
+        # HP TEXT
+        self.hp_text = QLabel("50 / 50", self)
+        self.hp_text.setStyleSheet("""
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+        """)
+
+
     def resizeEvent(self, event):
-        w = self.width()
-        h = self.height()
+        BAR_RATIO = 0.60
 
-        # Position name + level
-        self.name_label.setGeometry(0, 0, int(w * 0.75), 25)
-        self.level_label.setGeometry(int(w * 0.75), 0, int(w * 0.25), 25)
+        w = int(self.width() * BAR_RATIO)
+        x_center = (self.width() - w) // 2
 
-        # HP bar background
-        self.hp_bg.setGeometry(0, 30, w, 20)
+        # Y offset fixes name-cutting issue
+        y = 0
 
-        # Filled HP bar (dynamic)
-        self.hp_fill.setGeometry(0, 30, w, 20)
+        # Name label
+        self.name_label.setGeometry(x_center, y, w, 20)
 
-        # HP text on top
-        self.hp_text.setGeometry(0, 55, w, 30)
-
-    # Update HP dynamically
-    def set_values(self, name, current_hp, max_hp):
-        self.name_label.setText(name)
-        self.level_label.setText("50")
-
-        # Percent fill
-        percent = current_hp / max_hp
-        percent = max(0, min(1, percent))
-
-        # Adjust fill bar width
-        full_width = self.width()
-        self.hp_fill.setGeometry(
-            0, 30,
-            int(full_width * percent),
-            20
+        # Outer border
+        self.border.setGeometry(
+            x_center - 5,
+            y + 22,
+            w + 10,
+            22
         )
 
-        self.hp_text.setText(f"{current_hp}/{max_hp}")
+        # HP background
+        self.hp_bg.setGeometry(
+            x_center,
+            y + 25,
+            w,
+            16
+        )
+
+        # HP fill
+        self.hp_fill.setGeometry(
+            x_center,
+            y + 25,
+            w,
+            16
+        )
+
+        # HP text
+        self.hp_text.setGeometry(
+            x_center,
+            y + 46,
+            w,
+            18
+        )
+
+
+    def set_values(self, name, current_hp, max_hp):
+        self.name_label.setText(name)
+
+        pct = max(0, min(1, current_hp / max_hp))
+
+        BAR_RATIO = 0.60
+        full_width = int(self.width() * BAR_RATIO)
+        bar_width = int(full_width * pct)
+
+        x_center = (self.width() - full_width) // 2
+        y = 0
+
+        self.hp_fill.setGeometry(
+            x_center,
+            y + 25,
+            bar_width,
+            16
+        )
+
+        self.hp_text.setText(f"{current_hp} / {max_hp}")
 
 
 
