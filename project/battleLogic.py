@@ -32,10 +32,14 @@ def deterministic_random(seed_value: int) -> float:
     return rng.uniform(RANDOM_MIN, RANDOM_MAX)
 
 
-def calculate_damage(match_data: dict, attacker_ip: str, defender_ip: str, move_name: str) -> int:
+def calculate_damage(match_data: dict, attacker_addr: str, defender_addr: str, move_name: str) -> int:
+    """
+
+        NOTE: EXPECTS A FORMATTED ADDRESS
+    """
     # ---- Retrieve attacker/defender data ----
-    attacker = match_data[attacker_ip]
-    defender = match_data[defender_ip]
+    attacker = match_data[attacker_addr]
+    defender = match_data[defender_addr]
     move = MOVES.get(move_name)
 
     if move is None:

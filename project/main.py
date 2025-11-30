@@ -46,7 +46,7 @@ if __name__ == "__main__":
         host = Host(my_ip, config.DEFAULT_PORT)
         print("\n[MAIN] Host mode started. Waiting for connections...")
         host.joiner_listen()
-        host.run_host_loop()  # This loop runs indefinitely
+        host.run_game_loop()  # This loop runs indefinitely
 
     # ---------------------------------------------------------
     # JOINER / SPECTATOR MODES
@@ -55,8 +55,7 @@ if __name__ == "__main__":
         host_ip = input(f"Enter Host IP (leave blank for {my_ip}): ").strip()
 
         if not host_ip:
-            host_ip_check = input("Is the host running on this same machine? (Y/N): ").strip().upper()
-            host_ip = '127.0.0.1' if host_ip_check == 'Y' else my_ip
+            host_ip = my_ip
 
         player = Player(host_ip, config.DEFAULT_PORT,local_ip=my_ip, local_port=0)
         player.connect()

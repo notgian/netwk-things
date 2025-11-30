@@ -15,7 +15,7 @@ class AsyncInput:
     """
     def __init__(self, intermediate_callback=False):
         self.taking_input = False
-        self.input_thread = Thread(target=self.__take_input__, args=(intermediate_callback,))
+        self.input_thread = Thread(target=self.__take_input__, args=(intermediate_callback,), daemon=True)
         self.input_buff = ""
 
     def flush(self):
