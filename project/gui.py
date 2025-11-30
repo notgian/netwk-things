@@ -4,7 +4,7 @@ import sys
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton,
     QStackedWidget, QVBoxLayout, QGraphicsDropShadowEffect,
-    QScrollArea, QFrame, QSizePolicy, QGridLayout, QLineEdit, QHBoxLayout
+    QScrollArea, QFrame, QSizePolicy, QGridLayout, QLineEdit, QHBoxLayout, QGraphicsOpacityEffect
 )
 
 from PyQt5.QtGui import (
@@ -12,7 +12,7 @@ from PyQt5.QtGui import (
 )
 
 from PyQt5.QtCore import (
-    Qt, pyqtSignal, QThread, QSize
+    Qt, pyqtSignal, QThread, QSize, QTime
 )
 
 import warnings
@@ -24,6 +24,8 @@ import messages
 import threading
 import time
 from PyQt5.QtCore import QTimer
+from PyQt5.QtWidgets import QScrollArea, QTextEdit
+from PyQt5.QtCore import QEasingCurve, QPropertyAnimation
 #=====================================================================================
 
 
@@ -1229,18 +1231,26 @@ class VsScreen(QWidget):
 # 5. BATTLE SCREEN
 #=====================================================================================
 class BattleScreen(QWidget):
+    chat_received = pyqtSignal(dict)
     def __init__(self, parent, scaler, protocol_handler, role):
         super().__init__(parent)
         self.parent = parent
         self.scaler = scaler
         self.protocol = protocol_handler
         self.role = role   # host, player, spectator
+        self.damage_thread_running = False
 
         self.init_ui()
 
+        self.chat_received.connect(self._handle_chat_on_main_thread)
+
         # Start polling once UI is ready
         self.start_polling()
+        self.poll_chat()
 
+    # =====================================================================
+    # UI SETUP
+    # =====================================================================
     def init_ui(self):
         self.setGeometry(0, 0, self.parent.width(), self.parent.height())
 
@@ -1254,23 +1264,19 @@ class BattleScreen(QWidget):
         self.bg.setGeometry(0, 0, self.width(), self.height())
 
         # ------------------------------------------------------------
-        # BATTLEFIELD SPRITES
+        # SPRITES
         # ------------------------------------------------------------
         self.player_sprite = QLabel(self)
         self.player_sprite.setGeometry(
-            self.scaler.x(350.3),
-            self.scaler.y(561.9),
-            self.scaler.w(161.7),
-            self.scaler.h(183)
+            self.scaler.x(350.3), self.scaler.y(561.9),
+            self.scaler.w(161.7), self.scaler.h(183)
         )
         self.player_sprite.setScaledContents(True)
 
         self.opponent_sprite = QLabel(self)
         self.opponent_sprite.setGeometry(
-            self.scaler.x(795.9),
-            self.scaler.y(206.9),
-            self.scaler.w(124.9),
-            self.scaler.h(158.4)
+            self.scaler.x(795.9), self.scaler.y(206.9),
+            self.scaler.w(124.9), self.scaler.h(158.4)
         )
         self.opponent_sprite.setScaledContents(True)
 
@@ -1279,18 +1285,14 @@ class BattleScreen(QWidget):
         # ------------------------------------------------------------
         self.player_hp_bar = HPBar(self, self.scaler)
         self.player_hp_bar.setGeometry(
-            self.scaler.x(250),
-            self.scaler.y(500),
-            self.scaler.w(350),
-            self.scaler.h(80)
+            self.scaler.x(250), self.scaler.y(500),
+            self.scaler.w(350), self.scaler.h(80)
         )
 
         self.opponent_hp_bar = HPBar(self, self.scaler)
         self.opponent_hp_bar.setGeometry(
-            self.scaler.x(680),
-            self.scaler.y(150),
-            self.scaler.w(350),
-            self.scaler.h(80)
+            self.scaler.x(680), self.scaler.y(150),
+            self.scaler.w(350), self.scaler.h(80)
         )
 
         # ------------------------------------------------------------
@@ -1298,24 +1300,20 @@ class BattleScreen(QWidget):
         # ------------------------------------------------------------
         self.move_panel = QWidget(self)
         self.move_panel.setGeometry(
-            self.scaler.x(59.4),
-            self.scaler.y(798.9),
-            self.scaler.w(1192),
-            self.scaler.h(213)
+            self.scaler.x(59.4), self.scaler.y(798.9),
+            self.scaler.w(1192), self.scaler.h(213)
         )
         self.move_panel.setStyleSheet("""
             background: #0d1a8c;
             border-radius: 25px;
         """)
 
-        # ---------------- PROMPT BOX ----------------
+        # PROMPT BOX
         self.prompt_box = QLabel("Preparing battle...", self.move_panel)
         self.prompt_box.setWordWrap(True)
         self.prompt_box.setGeometry(
-            self.scaler.x(75.4 - 59.4),
-            self.scaler.y(834.9 - 818.9),
-            self.scaler.w(627.4),
-            self.scaler.h(179.1)
+            self.scaler.x(75.4 - 59.4), self.scaler.y(834.9 - 818.9),
+            self.scaler.w(627.4), self.scaler.h(179.1)
         )
         self.prompt_box.setStyleSheet("""
             background: #101058;
@@ -1325,7 +1323,7 @@ class BattleScreen(QWidget):
             font-size: 20px;
         """)
 
-        # ---------------- BUTTONS ----------------
+        # MOVE BUTTONS
         button_style = """
             QPushButton {
                 background: #ff3b30;
@@ -1339,138 +1337,163 @@ class BattleScreen(QWidget):
             }
         """
 
-        self.btn_tackle = QPushButton("Tackle", self.move_panel)
-        self.btn_tackle.setGeometry(
-            self.scaler.x(712.8 - 59.4),
-            self.scaler.y(836.6 - 818.9),
-            self.scaler.w(255.2),
-            self.scaler.h(79.2)
-        )
-        self.btn_tackle.setStyleSheet(button_style)
-        self.btn_tackle.clicked.connect(lambda: self.send_move("Tackle"))
+        def make_move_btn(text, x, y):
+            btn = QPushButton(text, self.move_panel)
+            btn.setGeometry(self.scaler.x(x), self.scaler.y(y), self.scaler.w(255.2), self.scaler.h(79.2))
+            btn.setStyleSheet(button_style)
+            btn.clicked.connect(lambda _, m=text: self.send_move(m))
+            return btn
 
-        self.btn_quick = QPushButton("Quick Attack", self.move_panel)
-        self.btn_quick.setGeometry(
-            self.scaler.x(715.7 - 59.4),
-            self.scaler.y(934.8 - 818.9),
-            self.scaler.w(255.2),
-            self.scaler.h(79.2)
-        )
-        self.btn_quick.setStyleSheet(button_style)
-        self.btn_quick.clicked.connect(lambda: self.send_move("Quick Attack"))
+        self.btn_tackle = make_move_btn("Tackle", 712.8 - 59.4, 836.6 - 818.9)
+        self.btn_quick = make_move_btn("Quick Attack", 715.7 - 59.4, 934.8 - 818.9)
+        self.btn_ember  = make_move_btn("Ember", 976.2 - 59.4, 836.6 - 818.9)
+        self.btn_water  = make_move_btn("Water Gun", 976.2 - 59.4, 935 - 818.9)
 
-        self.btn_ember = QPushButton("Ember", self.move_panel)
-        self.btn_ember.setGeometry(
-            self.scaler.x(976.2 - 59.4),
-            self.scaler.y(836.6 - 818.9),
-            self.scaler.w(255.2),
-            self.scaler.h(79.2)
-        )
-        self.btn_ember.setStyleSheet(button_style)
-        self.btn_ember.clicked.connect(lambda: self.send_move("Ember"))
-
-        self.btn_water = QPushButton("Water Gun", self.move_panel)
-        self.btn_water.setGeometry(
-            self.scaler.x(976.2 - 59.4),
-            self.scaler.y(935 - 818.9),
-            self.scaler.w(255.2),
-            self.scaler.h(79.2)
-        )
-        self.btn_water.setStyleSheet(button_style)
-        self.btn_water.clicked.connect(lambda: self.send_move("Water Gun"))
-
-        # Hide the whole panel if spectator
         if self.role == "spectator":
             self.move_panel.hide()
 
         # ------------------------------------------------------------
-        # CHAT PANEL (unchanged)
+        # CHAT PANEL
         # ------------------------------------------------------------
         self.chat_panel = QWidget(self)
         self.chat_panel.setGeometry(
-            self.scaler.x(1316.4),
-            self.scaler.y(16.8),
-            self.scaler.w(585.6),
-            self.scaler.h(1008.1)
+            self.scaler.x(1316.4), self.scaler.y(16.8),
+            self.scaler.w(585.6), self.scaler.h(1008.1)
         )
         self.chat_panel.setStyleSheet("""
             background: #ffffff;
             border-radius: 35px;
         """)
 
-        self.chat_scroll = QLabel(" ", self.chat_panel)
-        self.chat_scroll.setGeometry(
-            self.scaler.x(1333.4 - 1316.4),
-            self.scaler.y(32.8 - 16.8),
-            self.scaler.w(552.5),
-            self.scaler.h(876.7)
+        # Scroll area
+        self.chat_scroll_area = QScrollArea(self.chat_panel)
+        self.chat_scroll_area.setGeometry(
+            self.scaler.x(20), self.scaler.y(20),
+            self.scaler.w(550), self.scaler.h(870)
         )
-        self.chat_scroll.setStyleSheet("""
-            background: #b0cbcb;
-            border-radius: 25px;
-        """)
+        self.chat_scroll_area.setStyleSheet("border: none; background: transparent;")
+        self.chat_scroll_area.setWidgetResizable(True)
 
+        # Container for bubbles
+        self.chat_container = QWidget()
+        self.chat_layout = QVBoxLayout(self.chat_container)
+        self.chat_layout.setAlignment(Qt.AlignTop)
+        self.chat_scroll_area.setWidget(self.chat_container)
+
+        # Input box
         self.chat_input = QLineEdit(self.chat_panel)
         self.chat_input.setGeometry(
-            self.scaler.x(1341 - 1316.4),
-            self.scaler.y(964 - 46.8),
-            self.scaler.w(380.2),
-            self.scaler.h(64.9)
+            self.scaler.x(40), self.scaler.y(925),
+            self.scaler.w(400), self.scaler.h(60)
         )
         self.chat_input.setStyleSheet("""
-            background: #b0cbcb;
-            border-radius: 30px;
+            background: #d9e1e1;
+            border-radius: 25px;
             padding-left: 20px;
-            font-size: 22px;
+            font-size: 20px;
         """)
 
+        # --- STICKER BUTTON (LEFT) ---
         self.sticker_btn = QPushButton(self.chat_panel)
         self.sticker_btn.setGeometry(
-            self.scaler.x(1731.2 - 1316.4),
-            self.scaler.y(963.8 - 46.8),
-            self.scaler.w(64.9),
-            self.scaler.h(64.9)
+            self.scaler.x(460), self.scaler.y(925),
+            self.scaler.w(60), self.scaler.h(60)
         )
         self.sticker_btn.setIcon(QIcon("imgs/sticker_btn.png"))
-        self.sticker_btn.setIconSize(QSize(self.scaler.w(64.9), self.scaler.h(64.9)))
-        self.sticker_btn.setStyleSheet("border: none;")
+        self.sticker_btn.setIconSize(QSize(self.scaler.w(50), self.scaler.h(50)))
+        self.sticker_btn.setStyleSheet("""
+            QPushButton { border: none; }
+            QPushButton:hover { background: rgba(0,0,0,0.15); border-radius: 30px; }
+        """)
+        self.sticker_btn.clicked.connect(self.open_sticker_menu)
 
+        # --- SEND BUTTON (RIGHT) ---
         self.send_btn = QPushButton(self.chat_panel)
         self.send_btn.setGeometry(
-            self.scaler.x(1806.4 - 1316.4),
-            self.scaler.y(963.8 - 46.8),
-            self.scaler.w(64.9),
-            self.scaler.h(64.9)
+            self.scaler.x(530), self.scaler.y(925),
+            self.scaler.w(60), self.scaler.h(60)
         )
         self.send_btn.setIcon(QIcon("imgs/send_btn.png"))
-        self.send_btn.setIconSize(QSize(self.scaler.w(64.9), self.scaler.h(64.9)))
-        self.send_btn.setStyleSheet("border: none;")
+        self.send_btn.setIconSize(QSize(self.scaler.w(50), self.scaler.h(50)))
+        self.send_btn.setStyleSheet("""
+            QPushButton { border: none; }
+            QPushButton:hover { background: rgba(0,0,0,0.15); border-radius: 30px; }
+        """)
+        self.send_btn.clicked.connect(self.send_chat)
+        self.chat_input.returnPressed.connect(self.send_chat)
 
-    # ------------------ SEND MOVE ------------------
+    # =====================================================================
+    # GAME LOGIC
+    # =====================================================================
     def send_move(self, move_name):
         print(f"[GUI] Player selected move: {move_name}")
         self.protocol.send_attack_announce(move_name)
         self.enable_moves(False)
+        self.prompt_box.setText(f"Used {move_name}! Waiting for opponent...")
 
-    # ------------------ LOAD SPRITES ------------------
     def load_sprites(self, player_pixmap, opponent_pixmap):
         self.player_sprite.setPixmap(player_pixmap)
         self.opponent_sprite.setPixmap(opponent_pixmap)
 
-    # ------------------ ENABLE/DISABLE MOVES ------------------
     def enable_moves(self, enabled: bool):
         for btn in [self.btn_tackle, self.btn_quick, self.btn_ember, self.btn_water]:
             btn.setEnabled(enabled)
 
-    # ------------------ POLLING LOOP ------------------
+    # =====================================================================
+    # DAMAGE HANDLING
+    # =====================================================================
+    def perform_damage_resolution(self):
+        protocol = self.protocol
+        attack = protocol.last_attack_announce
+        if not attack:
+            return
+
+        attacker = attack["attacker_address"]
+        move_name = attack["move_name"]
+
+        defender = (
+            protocol.get_joiner_addr()
+            if attacker == protocol.fmt_address(protocol.get_host_addr())
+            else protocol.get_host_addr()
+        )
+        defender = protocol.fmt_address(defender)
+
+        # Damage calc
+        import battleLogic
+        dmg = battleLogic.calculate_damage(
+            protocol.get_match_data(), attacker, defender, move_name
+        )
+
+        old_hp = protocol.get_hp(defender)
+        new_hp = max(0, old_hp - dmg)
+        protocol.set_hp(defender, new_hp)
+
+        protocol.send_calculation_report(
+            attacker=protocol.match_data[attacker]["pokemon_name"],
+            move_used=move_name,
+            remaining_health=old_hp,
+            damage_dealt=dmg,
+            defender_hp_remaining=new_hp,
+            status_message=f"{move_name} dealt {dmg}! {defender} HP: {old_hp}→{new_hp}",
+        )
+
+        if new_hp <= 0:
+            protocol.send_game_over(
+                winner=protocol.match_data[attacker]["pokemon_name"],
+                loser=protocol.match_data[defender]["pokemon_name"],
+            )
+
+    # =====================================================================
+    # POLLING
+    # =====================================================================
     def start_polling(self):
         QTimer.singleShot(50, self.poll_protocol)
 
     def poll_protocol(self):
         protocol = self.protocol
 
-        # --- Turn-based button enabling ---
         if protocol.game_state == "WAITING_FOR_MOVE":
+            self.damage_thread_running = False
             if protocol.is_my_turn():
                 self.enable_moves(True)
                 self.prompt_box.setText("Your turn! Choose a move.")
@@ -1478,31 +1501,32 @@ class BattleScreen(QWidget):
                 self.enable_moves(False)
                 self.prompt_box.setText("Waiting for opponent...")
 
-        # --- Opponent ATTACK_ANNOUNCE ---
         attack = protocol.last_attack_announce
         if attack and not protocol.last_defense_announce:
             attacker = attack["attacker_address"]
             move = attack["move_name"]
-
             if attacker == protocol.fmt_address(protocol.opponent_addr):
                 self.prompt_box.setText(f"Opponent used {move}!")
                 protocol.send_defense_announce()
-                print("[GUI] Sent DEFENSE_ANNOUNCE")
 
-        # --- HP & Status updates ---
+        if protocol.game_state == "PROCESSING_TURN" and not self.damage_thread_running:
+            self.damage_thread_running = True
+            threading.Thread(target=self.perform_damage_resolution, daemon=True).start()
+
         if protocol.last_received_status:
             self.prompt_box.setText(protocol.last_received_status)
             self.update_all_hp()
 
-        # --- GAME OVER ---
         if protocol.game_state == "GAME_OVER":
             self.prompt_box.setText("GAME OVER!")
             self.enable_moves(False)
-            return  # Stop looping
+            return
 
         QTimer.singleShot(50, self.poll_protocol)
 
-    # ------------------ UPDATE ALL HP BARS ------------------
+    # =====================================================================
+    # UPDATE HP
+    # =====================================================================
     def update_all_hp(self):
         protocol = self.protocol
 
@@ -1513,21 +1537,128 @@ class BattleScreen(QWidget):
         opp_data = protocol.match_data.get(opp_key)
 
         if my_data:
-            name = my_data["pokemon_name"]
-            hp = my_data["hp"]
-            max_hp = int(my_data["data"]["hp"])
-            self.player_hp_bar.set_values(name, hp, max_hp)
+            self.player_hp_bar.set_values(
+                my_data["pokemon_name"], my_data["hp"], int(my_data["data"]["hp"])
+            )
 
         if opp_data:
-            name = opp_data["pokemon_name"]
-            hp = opp_data["hp"]
-            max_hp = int(opp_data["data"]["hp"])
-            self.opponent_hp_bar.set_values(name, hp, max_hp)
+            self.opponent_hp_bar.set_values(
+                opp_data["pokemon_name"], opp_data["hp"], int(opp_data["data"]["hp"])
+            )
+
+    # =====================================================================
+    # CHAT SYSTEM — BUBBLES, STICKERS & ANIMATION
+    # =====================================================================
+    def make_bubble(self, sender, role, text, is_sticker=False):
+        colors = {
+            "host": "#1a73e8",
+            "player": "#e84545",
+            "spectator": "#00a86b",
+            "unknown": "#555555"
+        }
+        color = colors.get(role, "#555555")
+
+        bubble = QWidget()
+        layout = QVBoxLayout(bubble)
+        layout.setContentsMargins(12, 8, 12, 8)
+
+        timestamp = QTime.currentTime().toString("hh:mm AP")
+        sender_label = QLabel(f"{sender} • {timestamp}")
+        sender_label.setStyleSheet("color: gray; font-size: 12px;")
+        layout.addWidget(sender_label)
+
+        msg_label = QLabel()
+        msg_label.setWordWrap(True)
+
+        if is_sticker:
+            pix = QPixmap(text)
+            msg_label.setPixmap(pix.scaled(120, 120, Qt.KeepAspectRatio))
+        else:
+            msg_label.setText(text)
+
+        msg_label.setStyleSheet(f"""
+            background: {color};
+            color: white;
+            border-radius: 12px;
+            padding: 10px;
+            font-size: 16px;
+        """)
+        layout.addWidget(msg_label)
+
+        bubble.setGraphicsEffect(QGraphicsOpacityEffect())
+        anim = QPropertyAnimation(bubble.graphicsEffect(), b"opacity")
+        anim.setDuration(250)
+        anim.setStartValue(0)
+        anim.setEndValue(1)
+        anim.setEasingCurve(QEasingCurve.OutQuad)
+        anim.start()
+
+        return bubble
+
+    def append_chat(self, sender, role, text, is_sticker=False):
+        bubble = self.make_bubble(sender, role, text, is_sticker)
+        self.chat_layout.addWidget(bubble)
+
+        # Auto-scroll
+        QTimer.singleShot(50, lambda: self.chat_scroll_area.verticalScrollBar().setValue(
+            self.chat_scroll_area.verticalScrollBar().maximum()
+        ))
+
+    def send_chat(self):
+        msg = self.chat_input.text().strip()
+        if msg == "":
+            return
+
+        # show it locally
+        self.append_chat("You", self.role, msg)
+
+        # protocol send
+        self.protocol.send_chat_message(
+            sender_name=self.role,
+            content_type=messages.ChatMessageType.TEXT,
+            message_text=msg
+        )
+
+        self.chat_input.clear()
+
+    def open_sticker_menu(self):
+        sticker_path = "stickers/s1.png"
+
+        # Show locally
+        self.append_chat("You", self.role, sticker_path, is_sticker=True)
+
+        self.protocol.send_chat_message(
+            sender_name=self.role,
+            content_type=messages.ChatMessageType.STICKER,
+            content=sticker_path
+        )
+
+    def poll_chat(self):
+        chat = getattr(self.protocol, "last_chat_message", None)
+
+        if chat:
+            # Fire signal so GUI thread safely updates bubbles
+            self.chat_received.emit(chat)
+            self.protocol.last_chat_message = None
+
+        QTimer.singleShot(80, self.poll_chat)
+
+    def _handle_chat_on_main_thread(self, chat):
+        sender = chat.get("sender_name", "Unknown")
+        msg_type = chat.get("content_type", messages.ChatMessageType.TEXT)
+        text = chat.get("message_text") or chat.get("content") or ""
+
+        role = sender.lower() if sender.lower() in ("host", "player", "spectator") else "unknown"
+
+        if msg_type == messages.ChatMessageType.STICKER:
+            self.append_chat(sender, role, text, is_sticker=True)
+        else:
+            self.append_chat(sender, role, text)
 
 
 
 # ------------------------------------------------------------
-# HP BAR CLASS
+# HP BAR CLASS (unchanged except layout fixes)
 # ------------------------------------------------------------
 class HPBar(QWidget):
     def __init__(self, parent, scaler):
@@ -1573,14 +1704,12 @@ class HPBar(QWidget):
             font-weight: bold;
         """)
 
-
     def resizeEvent(self, event):
         BAR_RATIO = 0.60
 
         w = int(self.width() * BAR_RATIO)
         x_center = (self.width() - w) // 2
 
-        # Y offset fixes name-cutting issue
         y = 0
 
         # Name label
@@ -1617,7 +1746,6 @@ class HPBar(QWidget):
             w,
             18
         )
-
 
     def set_values(self, name, current_hp, max_hp):
         self.name_label.setText(name)
@@ -1692,7 +1820,7 @@ class MainWindow(QStackedWidget):
 
                 if local_key in data and opp_key in data:
                     print("[GUI] Both players selected Pokémon!")
-                    QTimer.singleShot(0, self.open_setup_popup)
+                    QTimer.singleShot(0, self.open_vs_screen)
                     break
 
                 time.sleep(0.1)
@@ -1711,21 +1839,22 @@ class MainWindow(QStackedWidget):
     def open_vs_screen(self):
         protocol = self.protocol_handler
 
-        # Always force host on LEFT, player on RIGHT
         host_key = protocol.fmt_address(protocol.host_addr)
         player_key = protocol.fmt_address(protocol.joiner_addr)
+
+        if host_key not in protocol.match_data or player_key not in protocol.match_data:
+            print("[GUI] VS screen waiting for match_data sync...")
+            QTimer.singleShot(100, self.open_vs_screen)
+            return
 
         host_data = protocol.match_data[host_key]
         player_data = protocol.match_data[player_key]
 
-        # Convert names to Pokémon dict entries
         host_mon = self.get_pokemon_by_name(host_data["pokemon_name"])
         player_mon = self.get_pokemon_by_name(player_data["pokemon_name"])
 
-        # For debugging
-        print(f"[GUI] Loading VS screen: HOST={host_mon['name']}   PLAYER={player_mon['name']}")
+        print(f"[GUI] Loading VS screen: HOST={host_mon['name']} PLAYER={player_mon['name']}")
 
-        # Create VS screen with correct ordering
         self.vs_screen = VsScreen(self, self.scaler, host_mon, player_mon)
         self.addWidget(self.vs_screen)
         self.setCurrentWidget(self.vs_screen)
