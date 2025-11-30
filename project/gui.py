@@ -37,6 +37,9 @@ from spectator import Spectator
 import config
 import socket
 
+from PyQt5.QtCore import QThread, pyqtSignal  # make sure these are imported
+
+
 def get_my_ip():
     """Returns the actual local LAN IP address."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -49,41 +52,69 @@ def get_my_ip():
         s.close()
     return IP
 
+
 class HostThread(QThread):
+    """
+    Background thread for Host handshake.
+
+    - Blocks in joiner_listen() until a Player connects.
+    - Once a joiner is connected and the protocol handler is initialized,
+      it emits handshake_success so the GUI can move to the next screen.
+    """
     handshake_success = pyqtSignal()
 
-    def __init__(self, host_obj):
+    def __init__(self, host_obj: Host):
         super().__init__()
         self.host = host_obj
 
     def run(self):
-        # Run host loop until we enter SETUP
-        while True:
-            if self.host.protocol_handler.game_state == "SETUP":
-                self.handshake_success.emit()
-                break
+        # 1. Wait for a joiner to connect (blocking call).
+        #    This internally does:
+        #    - handle_player_join()
+        #    - protocol_handler.set_opponent(...)
+        #    - starts the listener thread
+        #    - moves game_state into "SETUP"
+        self.host.joiner_listen()
 
+        # 2. Notify the GUI that the handshake is done and we're in SETUP.
+        self.handshake_success.emit()
 
-        # Continue running the full host loop
-        self.host.run_game_loop()
+        # IMPORTANT:
+        # Do NOT call self.host.run_game_loop() here.
+        # The GUI will now drive the game using protocol_handler.
 
 
 class PlayerThread(QThread):
-    def __init__(self, player_obj):
+    """
+    Legacy placeholder.
+
+    We no longer run the CLI game loop for the Player.
+    The GUI directly controls the GameProtocolHandler, so this thread
+    is intentionally a no-op to avoid conflicting input loops.
+    """
+    def __init__(self, player_obj: Player):
         super().__init__()
         self.player = player_obj
 
     def run(self):
-        self.player.run_game_loop()
+        # Old behavior (CLI):
+        #     self.player.run_game_loop()
+        # New behavior (GUI-driven):
+        #     Do nothing here; the GUI will use player.protocol_handler.
+        return
 
 
 class SpectatorThread(QThread):
-    def __init__(self, spec_obj):
+    """
+    Keeps the existing spectator behavior (CLI-style) for now.
+    """
+    def __init__(self, spec_obj: Spectator):
         super().__init__()
         self.spec = spec_obj
 
     def run(self):
         self.spec.connect_to_host()
+
 
 
 #=====================================================================================
@@ -488,13 +519,13 @@ class JoinPopup(QWidget):
         ok = player_obj.connect()
 
         if ok:
-            print("[GUI] Player handshake successful. Starting game loop...")
-            self.player_thread = PlayerThread(player_obj)
-            self.player_thread.start()
+            print("[GUI] Player handshake successful.")
 
-            # FIX: access MainWindow properly
+            # Set protocol handler for the entire GUI
             main_window = self.parent.parent
             main_window.protocol_handler = player_obj.protocol_handler
+
+            # Open Pokémon selection screen
             main_window.open_pokemon_selection(role="player")
 
         else:
@@ -1080,8 +1111,7 @@ class SetupPopup(QWidget):
     # FINAL SEND
     # -----------------------------------------------------------
     def finish_setup(self, mode):
-        # Use the Pokemon chosen on this GUI, not from match_data
-        mon = self.parent.selected_mon  # dict with id, name, etc.
+        mon = self.parent.selected_mon
         pokemon_name = mon["name"]
 
         boosts = {
@@ -1096,8 +1126,10 @@ class SetupPopup(QWidget):
         )
 
         self.hide()
-        if hasattr(self.parent, "open_vs_screen"):
-            self.parent.open_vs_screen()
+
+        # Wait until both sides' match_data are ready
+        if hasattr(self.parent, "wait_for_both_pokemon"):
+            self.parent.wait_for_both_pokemon()
 
 
 
@@ -1352,7 +1384,7 @@ class BattleScreen(QWidget):
             self.move_panel.hide()
 
         # ------------------------------------------------------------
-        # CHAT PANEL
+        # CHAT PANEL (unchanged)
         # ------------------------------------------------------------
         self.chat_panel = QWidget(self)
         self.chat_panel.setGeometry(
