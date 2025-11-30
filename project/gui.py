@@ -1146,6 +1146,7 @@ class VsScreen(QWidget):
         self.host_mon = host_mon        # dict with {id,name}
         self.player_mon = player_mon    # dict with {id,name}
 
+
         self.init_ui()
 
     def init_ui(self):
@@ -1241,6 +1242,7 @@ class BattleScreen(QWidget):
         self.protocol = protocol_handler
         self.role = role   # host, player, spectator
         self.damage_thread_running = False
+        self._stop_polling = False
 
         self.init_ui()
 
@@ -1512,6 +1514,9 @@ class BattleScreen(QWidget):
         QTimer.singleShot(50, self.poll_protocol)
 
     def poll_protocol(self):
+
+        if self._stop_polling:
+            return
         protocol = self.protocol
 
         # NORMAL GAME LOOP ======================================================
@@ -1545,9 +1550,10 @@ class BattleScreen(QWidget):
         # GAME OVER LOGIC =======================================================
         if protocol.game_state == "GAME_OVER":
 
-            # Only check for missing data *inside* GAME_OVER
+            # Stop all polling forever
+            self._stop_polling = True
+
             if not protocol.last_received_game_over:
-                QTimer.singleShot(50, self.poll_protocol)
                 return
 
             self.enable_moves(False)
@@ -1559,16 +1565,13 @@ class BattleScreen(QWidget):
                 image = "imgs/game_ended.png"
             else:
                 my_pokemon = protocol.match_data[protocol.fmt_address(protocol.local_addr)]["pokemon_name"]
-                if my_pokemon == winner:
-                    image = "imgs/you_won.png"
-                else:
-                    image = "imgs/game_over.png"
+                image = "imgs/you_won.png" if my_pokemon == winner else "imgs/game_over.png"
 
             # Show ending screen
             EndingScreen(self.parent, self.scaler, image)
 
-            # Tell parent that battle is finished
-            self.parent.active_battle_ended()
+            # Safely delete battle screen a little later
+            QTimer.singleShot(200, self.parent.active_battle_ended)
             return
 
         # CONTINUE POLLING ======================================================
@@ -1860,6 +1863,10 @@ class EndingScreen(QWidget):
     def __init__(self, parent, scaler, image_path):
         super().__init__(parent)
         self.scaler = scaler
+
+        # Save safe reference to MainWindow instead of relying on parent()
+        self.main_window = parent
+
         self.setGeometry(0, 0, parent.width(), parent.height())
 
         self.bg = QLabel(self)
@@ -1870,11 +1877,14 @@ class EndingScreen(QWidget):
 
         self.show()
 
-        # auto return to title screen after 5 seconds
+        # Return to title after 5 seconds
         QTimer.singleShot(5000, self.return_to_title)
 
     def return_to_title(self):
-        self.parent().go_to_title_screen()
+        # ALWAYS refer to the saved main_window
+        self.main_window.go_to_title_screen()
+
+        # Clean yourself up
         self.deleteLater()
 
 
