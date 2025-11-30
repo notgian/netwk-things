@@ -1,3 +1,6 @@
+
+# Damage calculator (Hiniwalay ko na lang)
+
 import random
 from typing import Dict
 import messages

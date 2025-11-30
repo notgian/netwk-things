@@ -1,6 +1,5 @@
 import ast
 import messages
-import config
 from messages import CommunicationMode
 from messages import MessageType, ChatMessageType
 from messages import (
@@ -203,7 +202,6 @@ class GameProtocolHandler:
             f"pokemon={pokemon_name}, hp={base_hp}, boosts={stat_boosts}"
         )
 
-        # Construct & send BATTLE_SETUP message using messages.BattleSetupMessage
         battle_setup_msg = BattleSetupMessage(
             communication_mode=self.communication_mode,
             pokemon_name=pokemon_name,
@@ -211,8 +209,6 @@ class GameProtocolHandler:
         )
 
         self._send_message(battle_setup_msg)
-
-        # After sending OUR setup, check if both sides are ready
         self._check_battle_setup_complete()
 
     # -----------------------------
@@ -236,11 +232,8 @@ class GameProtocolHandler:
                 f"First turn: {self.fmt_address(self.current_turn_addr)} "
                 f"({'HOST' if self.current_turn_addr == self.host_addr else 'JOINER'})"
             )
-<<<<<<<<< Temporary merge branch 1
-=========
             return True
         return False
->>>>>>>>> Temporary merge branch 2
 
     # -----------------------------
     #  MAIN MESSAGE ENTRYPOINT

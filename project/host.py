@@ -1,6 +1,4 @@
 import random
-import time
-from client import Client
 import messages
 from user import User
 
@@ -12,9 +10,8 @@ class Host(User):
     """
     Manages the game as the Host (Player 1).
     Uses the Client to handle networking.
-    Handles exactly one player + any spectators.
+    Manages connections for one Player 2 and multiple Spectators.
     """
-
     def __init__(self, host_ip, port):
         super().__init__(host_ip, port)
         print(f"[HOST] Host Client running at {host_ip}:{port}")
@@ -28,7 +25,6 @@ class Host(User):
         while not connected:
             message_text, address = self.net_client.receive_from()
 
-            # No message
             if not message_text:
                 continue
 
@@ -98,7 +94,6 @@ class Host(User):
 
         # 1. Handshake
         response_msg = messages.HandshakeResponseMessage(seed=seed)
-        self.net_client.send_to(response_msg.as_text(), address)
 
         self.net_client.send_to(response_msg.as_text(), spectator_address)
         print("[HOST] Spectator handshake complete.")

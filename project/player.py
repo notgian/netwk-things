@@ -1,4 +1,4 @@
-from client import Client
+import config
 import messages
 from user import User
 

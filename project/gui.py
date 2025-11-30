@@ -65,7 +65,7 @@ class HostThread(QThread):
 
 
         # Continue running the full host loop
-        self.host.run_host_loop()
+        self.host.run_game_loop()
 
 
 class PlayerThread(QThread):
@@ -1206,6 +1206,9 @@ class BattleScreen(QWidget):
 
         self.init_ui()
 
+        # Start polling once UI is ready
+        self.start_polling()
+
     def init_ui(self):
         self.setGeometry(0, 0, self.parent.width(), self.parent.height())
 
@@ -1274,7 +1277,7 @@ class BattleScreen(QWidget):
         """)
 
         # ---------------- PROMPT BOX ----------------
-        self.prompt_box = QLabel("All In Game prompts will be here", self.move_panel)
+        self.prompt_box = QLabel("Preparing battle...", self.move_panel)
         self.prompt_box.setWordWrap(True)
         self.prompt_box.setGeometry(
             self.scaler.x(75.4 - 59.4),
@@ -1304,7 +1307,6 @@ class BattleScreen(QWidget):
             }
         """
 
-        # TACKLE
         self.btn_tackle = QPushButton("Tackle", self.move_panel)
         self.btn_tackle.setGeometry(
             self.scaler.x(712.8 - 59.4),
@@ -1315,7 +1317,6 @@ class BattleScreen(QWidget):
         self.btn_tackle.setStyleSheet(button_style)
         self.btn_tackle.clicked.connect(lambda: self.send_move("Tackle"))
 
-        # QUICK ATTACK
         self.btn_quick = QPushButton("Quick Attack", self.move_panel)
         self.btn_quick.setGeometry(
             self.scaler.x(715.7 - 59.4),
@@ -1326,7 +1327,6 @@ class BattleScreen(QWidget):
         self.btn_quick.setStyleSheet(button_style)
         self.btn_quick.clicked.connect(lambda: self.send_move("Quick Attack"))
 
-        # EMBER
         self.btn_ember = QPushButton("Ember", self.move_panel)
         self.btn_ember.setGeometry(
             self.scaler.x(976.2 - 59.4),
@@ -1337,7 +1337,6 @@ class BattleScreen(QWidget):
         self.btn_ember.setStyleSheet(button_style)
         self.btn_ember.clicked.connect(lambda: self.send_move("Ember"))
 
-        # WATER GUN
         self.btn_water = QPushButton("Water Gun", self.move_panel)
         self.btn_water.setGeometry(
             self.scaler.x(976.2 - 59.4),
@@ -1353,7 +1352,7 @@ class BattleScreen(QWidget):
             self.move_panel.hide()
 
         # ------------------------------------------------------------
-        # CHAT PANEL (right side)
+        # CHAT PANEL
         # ------------------------------------------------------------
         self.chat_panel = QWidget(self)
         self.chat_panel.setGeometry(
@@ -1367,7 +1366,6 @@ class BattleScreen(QWidget):
             border-radius: 35px;
         """)
 
-        # Chat scroll area
         self.chat_scroll = QLabel(" ", self.chat_panel)
         self.chat_scroll.setGeometry(
             self.scaler.x(1333.4 - 1316.4),
@@ -1380,7 +1378,6 @@ class BattleScreen(QWidget):
             border-radius: 25px;
         """)
 
-        # Input bar
         self.chat_input = QLineEdit(self.chat_panel)
         self.chat_input.setGeometry(
             self.scaler.x(1341 - 1316.4),
@@ -1395,7 +1392,6 @@ class BattleScreen(QWidget):
             font-size: 22px;
         """)
 
-        # Sticker button
         self.sticker_btn = QPushButton(self.chat_panel)
         self.sticker_btn.setGeometry(
             self.scaler.x(1731.2 - 1316.4),
@@ -1407,7 +1403,6 @@ class BattleScreen(QWidget):
         self.sticker_btn.setIconSize(QSize(self.scaler.w(64.9), self.scaler.h(64.9)))
         self.sticker_btn.setStyleSheet("border: none;")
 
-        # Send button
         self.send_btn = QPushButton(self.chat_panel)
         self.send_btn.setGeometry(
             self.scaler.x(1806.4 - 1316.4),
@@ -1423,15 +1418,79 @@ class BattleScreen(QWidget):
     def send_move(self, move_name):
         print(f"[GUI] Player selected move: {move_name}")
         self.protocol.send_attack_announce(move_name)
+        self.enable_moves(False)
 
     # ------------------ LOAD SPRITES ------------------
     def load_sprites(self, player_pixmap, opponent_pixmap):
         self.player_sprite.setPixmap(player_pixmap)
         self.opponent_sprite.setPixmap(opponent_pixmap)
 
-    # ------------------ UPDATE HP ------------------
-    def update_hp(self, ip, new_hp):
-        pass
+    # ------------------ ENABLE/DISABLE MOVES ------------------
+    def enable_moves(self, enabled: bool):
+        for btn in [self.btn_tackle, self.btn_quick, self.btn_ember, self.btn_water]:
+            btn.setEnabled(enabled)
+
+    # ------------------ POLLING LOOP ------------------
+    def start_polling(self):
+        QTimer.singleShot(50, self.poll_protocol)
+
+    def poll_protocol(self):
+        protocol = self.protocol
+
+        # --- Turn-based button enabling ---
+        if protocol.game_state == "WAITING_FOR_MOVE":
+            if protocol.is_my_turn():
+                self.enable_moves(True)
+                self.prompt_box.setText("Your turn! Choose a move.")
+            else:
+                self.enable_moves(False)
+                self.prompt_box.setText("Waiting for opponent...")
+
+        # --- Opponent ATTACK_ANNOUNCE ---
+        attack = protocol.last_attack_announce
+        if attack and not protocol.last_defense_announce:
+            attacker = attack["attacker_address"]
+            move = attack["move_name"]
+
+            if attacker == protocol.fmt_address(protocol.opponent_addr):
+                self.prompt_box.setText(f"Opponent used {move}!")
+                protocol.send_defense_announce()
+                print("[GUI] Sent DEFENSE_ANNOUNCE")
+
+        # --- HP & Status updates ---
+        if protocol.last_received_status:
+            self.prompt_box.setText(protocol.last_received_status)
+            self.update_all_hp()
+
+        # --- GAME OVER ---
+        if protocol.game_state == "GAME_OVER":
+            self.prompt_box.setText("GAME OVER!")
+            self.enable_moves(False)
+            return  # Stop looping
+
+        QTimer.singleShot(50, self.poll_protocol)
+
+    # ------------------ UPDATE ALL HP BARS ------------------
+    def update_all_hp(self):
+        protocol = self.protocol
+
+        my_key = protocol.fmt_address(protocol.local_addr)
+        opp_key = protocol.fmt_address(protocol.opponent_addr)
+
+        my_data = protocol.match_data.get(my_key)
+        opp_data = protocol.match_data.get(opp_key)
+
+        if my_data:
+            name = my_data["pokemon_name"]
+            hp = my_data["hp"]
+            max_hp = int(my_data["data"]["hp"])
+            self.player_hp_bar.set_values(name, hp, max_hp)
+
+        if opp_data:
+            name = opp_data["pokemon_name"]
+            hp = opp_data["hp"]
+            max_hp = int(opp_data["data"]["hp"])
+            self.opponent_hp_bar.set_values(name, hp, max_hp)
 
 
 
@@ -1596,7 +1655,10 @@ class MainWindow(QStackedWidget):
                 data = protocol.match_data
 
                 # Must exist on both sides
-                if protocol.local_ip in data and protocol.opponent_addr[0] in data:
+                local_key = protocol.fmt_address(protocol.local_addr)
+                opp_key = protocol.fmt_address(protocol.opponent_addr)
+
+                if local_key in data and opp_key in data:
                     print("[GUI] Both players selected Pokémon!")
                     QTimer.singleShot(0, self.open_setup_popup)
                     break
@@ -1617,19 +1679,21 @@ class MainWindow(QStackedWidget):
     def open_vs_screen(self):
         protocol = self.protocol_handler
 
-        # Get raw entries
-        host_ip = protocol.host_ip
-        player_ip = protocol.local_ip if not protocol.is_host else protocol.opponent_addr[0]
+        # Always force host on LEFT, player on RIGHT
+        host_key = protocol.fmt_address(protocol.host_addr)
+        player_key = protocol.fmt_address(protocol.joiner_addr)
 
-        host_data = protocol.match_data[host_ip]
-        player_data = protocol.match_data[player_ip]
+        host_data = protocol.match_data[host_key]
+        player_data = protocol.match_data[player_key]
 
-        # Convert "Bulbasaur" → {"id": 1, "name": "Bulbasaur"}
+        # Convert names to Pokémon dict entries
         host_mon = self.get_pokemon_by_name(host_data["pokemon_name"])
         player_mon = self.get_pokemon_by_name(player_data["pokemon_name"])
 
-        print(f"[GUI] Loading VS screen: {host_mon['name']} VS {player_mon['name']}")
+        # For debugging
+        print(f"[GUI] Loading VS screen: HOST={host_mon['name']}   PLAYER={player_mon['name']}")
 
+        # Create VS screen with correct ordering
         self.vs_screen = VsScreen(self, self.scaler, host_mon, player_mon)
         self.addWidget(self.vs_screen)
         self.setCurrentWidget(self.vs_screen)
@@ -1668,12 +1732,11 @@ class MainWindow(QStackedWidget):
         protocol = self.protocol_handler
         md = protocol.match_data
 
-        # Determine host & player Pokémon
-        host_ip = protocol.host_ip
-        join_ip = protocol.joiner_ip
+        host_key = protocol.fmt_address(protocol.host_addr)
+        join_key = protocol.fmt_address(protocol.joiner_addr)
 
-        host_mon = self.get_pokemon_by_name(md[host_ip]["pokemon_name"])
-        join_mon = self.get_pokemon_by_name(md[join_ip]["pokemon_name"])
+        host_mon = self.get_pokemon_by_name(md[host_key]["pokemon_name"])
+        join_mon = self.get_pokemon_by_name(md[join_key]["pokemon_name"])
 
         # Load preloaded sprites from selection screen
         loaded = self.pokemon_screen.loaded_sprites

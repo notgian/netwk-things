@@ -1,4 +1,3 @@
-import messages as msg
 import socket
 import config
 import os
@@ -13,6 +12,7 @@ def get_my_ip():
         s.connect(('10.255.255.255', 1))
         IP = s.getsockname()[0]
     except Exception:
+        # Fallback to localhost
         IP = '127.0.0.1'
     finally:
         s.close()

@@ -116,5 +116,3 @@ class ReliabilityLayer():
 
 # Message is sent from the client, and the await_ack with their local_ip is
 # passed to await_ack
-
-
