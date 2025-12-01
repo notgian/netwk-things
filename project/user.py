@@ -15,7 +15,14 @@ class User:
         if not self.net_client.bind_socket(local_ip, local_port):
             exit()
 
-        self.protocol_handler = GameProtocolHandler(self.net_client, (local_ip, local_port), is_host=True)
+        if remote_addr == remote_port and remote_addr is None:
+            self.host_addr = (local_ip, local_port)
+            self.is_host = True
+        else:
+            self.host_addr = (remote_addr, remote_port)
+            self.is_host = False
+
+        self.protocol_handler = GameProtocolHandler(self.net_client, (local_ip, local_port), is_host=self.is_host, parent_user=self)
 
         self.is_listening = False
         self.listener_thread = Thread(target=self.__listener__, daemon=True)
@@ -23,13 +30,6 @@ class User:
         self.asyncInput = AsyncInput(self.__process_command__)
 
         self.game_running = False
-
-        if remote_addr == remote_port and remote_addr is None:
-            self.host_addr = (local_ip, local_port)
-            self.is_host = True
-        else:
-            self.host_addr = (remote_addr, remote_port)
-            self.is_host = False
 
     def run_game_loop(self):
         protocol = self.protocol_handler
@@ -214,12 +214,12 @@ class User:
 
         # Chat message that sends text
         # syntax: /message all message text follows here
-        sender = f"{self.protocol_handler.local_addr}:{self.protocol_handler.local_addr}"
+        sender = self.protocol_handler.fmt_address(self.protocol_handler.local_addr)
 
         if tokenized_text[0][1:] == "message":
             message = text[len("/message "):]
             self.protocol_handler.send_chat_message(sender_name=sender,
-                                                    content_type=messages.ChatMessageType.TEXT, 
+                                                    content_type=messages.ChatMessageType.TEXT,
                                                     content=message)
 
         # Chat message that sends a sticker

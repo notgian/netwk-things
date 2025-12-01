@@ -660,9 +660,27 @@ class SpectatePopup(QWidget):
         self.spec_thread = SpectatorThread(spec_obj)
         self.spec_thread.start()
 
+        self.parent.parent.protocol_handler = spec_obj.protocol
+
+        self.parent.parent.wait_for_spectator_sync()
+
         self.hide()
 
+    def join_selected(self):
+        ip = self.ip_textbox.text().strip()
+        my_ip = get_my_ip()
+        host_ip = ip if ip else my_ip
 
+        print(f"[GUI] Spectating host at: {host_ip}")
+
+        spec_obj = Spectator(host_ip, config.DEFAULT_PORT, local_ip=my_ip, local_port=0)
+
+        self.spec_thread = SpectatorThread(spec_obj)
+        self.spec_thread.start()
+
+        self.parent.parent.wait_for_spectator_sync(spec_obj)
+
+        self.hide()
 
 #=====================================================================================
 # 3. SPRITE PICKER
@@ -1451,12 +1469,19 @@ class BattleScreen(QWidget):
         attacker = attack["attacker_address"]
         move_name = attack["move_name"]
 
-        defender = (
-            protocol.get_joiner_addr()
-            if attacker == protocol.fmt_address(protocol.get_host_addr())
-            else protocol.get_host_addr()
-        )
-        defender = protocol.fmt_address(defender)
+        # Determine Defender
+        host_key = protocol.fmt_address(protocol.host_addr)
+
+        # 1. Find the two combatant keys
+        keys = [k for k in protocol.match_data.keys() if k != "seed"]
+
+        if len(keys) < 2: return  # Not enough info yet
+
+        # Logic: If attacker is A, defender is B.
+        if attacker == keys[0]:
+            defender = keys[1]
+        else:
+            defender = keys[0]
 
         # Damage calc
         import battleLogic
@@ -1468,14 +1493,15 @@ class BattleScreen(QWidget):
         new_hp = max(0, old_hp - dmg)
         protocol.set_hp(defender, new_hp)
 
-        protocol.send_calculation_report(
-            attacker=protocol.match_data[attacker]["pokemon_name"],
-            move_used=move_name,
-            remaining_health=old_hp,
-            damage_dealt=dmg,
-            defender_hp_remaining=new_hp,
-            status_message=f"{move_name} dealt {dmg}! {defender} HP: {old_hp}→{new_hp}",
-        )
+        if self.role != "spectator":
+            protocol.send_calculation_report(
+                attacker=protocol.match_data[attacker]["pokemon_name"],
+                move_used=move_name,
+                remaining_health=old_hp,
+                damage_dealt=dmg,
+                defender_hp_remaining=new_hp,
+                status_message=f"{move_name} dealt {dmg}! {defender} HP: {old_hp}→{new_hp}",
+            )
 
         if new_hp <= 0:
             protocol.send_game_over(
@@ -1572,9 +1598,12 @@ class BattleScreen(QWidget):
 
         if is_sticker:
             pix = QPixmap(text)
-            msg_label.setPixmap(pix.scaled(120, 120, Qt.KeepAspectRatio))
+            if not pix.isNull():
+                msg_label.setPixmap(pix.scaled(120, 120, Qt.KeepAspectRatio))
+            else:
+                msg_label.setText("[Sticker missing]")
         else:
-            msg_label.setText(text)
+            msg_label.setText(str(text))  # Ensure text is string
 
         msg_label.setStyleSheet(f"""
             background: {color};
@@ -1585,8 +1614,10 @@ class BattleScreen(QWidget):
         """)
         layout.addWidget(msg_label)
 
-        bubble.setGraphicsEffect(QGraphicsOpacityEffect())
-        anim = QPropertyAnimation(bubble.graphicsEffect(), b"opacity")
+        effect = QGraphicsOpacityEffect(bubble)
+        bubble.setGraphicsEffect(effect)
+
+        anim = QPropertyAnimation(effect, b"opacity", bubble)
         anim.setDuration(250)
         anim.setStartValue(0)
         anim.setEndValue(1)
@@ -1616,7 +1647,7 @@ class BattleScreen(QWidget):
         self.protocol.send_chat_message(
             sender_name=self.role,
             content_type=messages.ChatMessageType.TEXT,
-            message_text=msg
+            content=msg
         )
 
         self.chat_input.clear()
@@ -1634,27 +1665,37 @@ class BattleScreen(QWidget):
         )
 
     def poll_chat(self):
-        chat = getattr(self.protocol, "last_chat_message", None)
+        try:
+            # Check if protocol exists and has a message
+            if self.protocol:
+                chat = getattr(self.protocol, "last_chat_message", None)
+                if chat:
+                    self.chat_received.emit(chat)
+                    self.protocol.last_chat_message = None
+        except Exception as e:
+            print(f"[GUI] Chat polling error: {e}")
 
-        if chat:
-            # Fire signal so GUI thread safely updates bubbles
-            self.chat_received.emit(chat)
-            self.protocol.last_chat_message = None
-
+        # Always restart the timer so chat doesn't freeze
         QTimer.singleShot(80, self.poll_chat)
 
     def _handle_chat_on_main_thread(self, chat):
         sender = chat.get("sender_name", "Unknown")
-        msg_type = chat.get("content_type", messages.ChatMessageType.TEXT)
+
+        raw_type = chat.get("content_type", "TEXT")
+
         text = chat.get("message_text") or chat.get("content") or ""
+
+        if not text:
+            return
 
         role = sender.lower() if sender.lower() in ("host", "player", "spectator") else "unknown"
 
-        if msg_type == messages.ChatMessageType.STICKER:
+        is_sticker = (raw_type == messages.ChatMessageType.STICKER.value or raw_type == "STICKER")
+
+        if is_sticker:
             self.append_chat(sender, role, text, is_sticker=True)
         else:
             self.append_chat(sender, role, text)
-
 
 
 # ------------------------------------------------------------
@@ -1774,6 +1815,7 @@ class HPBar(QWidget):
 # 6. MAIN WINDOW
 #=====================================================================================
 class MainWindow(QStackedWidget):
+    spectator_sync_complete = pyqtSignal()
     def __init__(self):
         super().__init__()
 
@@ -1791,6 +1833,7 @@ class MainWindow(QStackedWidget):
         self.addWidget(self.pokemon_screen)  # index 2
 
         self.setCurrentWidget(self.title_screen)
+        self.spectator_sync_complete.connect(self.open_vs_screen)
 
     # -----------------------------------------
     # OPEN Pokémon SELECTION SCREEN
@@ -1827,6 +1870,39 @@ class MainWindow(QStackedWidget):
 
         threading.Thread(target=poll, daemon=True).start()
 
+    def wait_for_spectator_sync(self, spec_obj=None):
+        print("[GUI] Waiting for battle state sync from Host...")
+
+        def poll():
+            try:
+                while True:
+                    # 1. Try to grab protocol if we don't have it yet
+                    if self.protocol_handler is None:
+                        if spec_obj and spec_obj.protocol:
+                            self.protocol_handler = spec_obj.protocol
+                            print("[GUI] Protocol handler linked successfully!")
+                        else:
+                            time.sleep(0.5)
+                            continue
+
+                    protocol = self.protocol_handler
+
+                    # 2. Filter keys
+                    keys = list(protocol.match_data.keys())
+                    players_found = [k for k in keys if k != "seed"]
+
+                    if len(players_found) >= 2:
+                        print(f"[GUI] Sync complete! Transitioning...")
+                        self.spectator_sync_complete.emit()
+                        break
+
+                    time.sleep(1.0)
+            except Exception as e:
+                print(f"[GUI ERROR] Polling thread crashed: {e}")
+
+        self._poll_thread = threading.Thread(target=poll, daemon=True)
+        self._poll_thread.start()
+
     # -----------------------------------------
     # OPEN THE SETUP POPUP (STAT + COMM MODE)
     # -----------------------------------------
@@ -1838,12 +1914,20 @@ class MainWindow(QStackedWidget):
 
     def open_vs_screen(self):
         protocol = self.protocol_handler
+        if not protocol: return
 
         host_key = protocol.fmt_address(protocol.host_addr)
-        player_key = protocol.fmt_address(protocol.joiner_addr)
 
-        if host_key not in protocol.match_data or player_key not in protocol.match_data:
-            print("[GUI] VS screen waiting for match_data sync...")
+        player_key = None
+
+        for k in protocol.match_data.keys():
+            if k != "seed" and k != host_key:
+                player_key = k
+                break
+
+        # 3. Check if data exists
+        if not player_key or player_key not in protocol.match_data:
+            print("[GUI] VS screen waiting for data (retry in 100ms)...")
             QTimer.singleShot(100, self.open_vs_screen)
             return
 
@@ -1853,7 +1937,7 @@ class MainWindow(QStackedWidget):
         host_mon = self.get_pokemon_by_name(host_data["pokemon_name"])
         player_mon = self.get_pokemon_by_name(player_data["pokemon_name"])
 
-        print(f"[GUI] Loading VS screen: HOST={host_mon['name']} PLAYER={player_mon['name']}")
+        print(f"[GUI] Loading VS: HOST={host_mon['name']} vs PLAYER={player_mon['name']}")
 
         self.vs_screen = VsScreen(self, self.scaler, host_mon, player_mon)
         self.addWidget(self.vs_screen)
@@ -1894,26 +1978,51 @@ class MainWindow(QStackedWidget):
         md = protocol.match_data
 
         host_key = protocol.fmt_address(protocol.host_addr)
-        join_key = protocol.fmt_address(protocol.joiner_addr)
+
+        # Dynamic Player 2 finding
+        join_key = None
+        for k in md.keys():
+            # Filter out 'seed' and ensure the value is a dictionary
+            if k != "seed" and k != host_key and isinstance(md[k], dict):
+                join_key = k
+                break
+
+        if not join_key: return
 
         host_mon = self.get_pokemon_by_name(md[host_key]["pokemon_name"])
         join_mon = self.get_pokemon_by_name(md[join_key]["pokemon_name"])
 
-        # Load preloaded sprites from selection screen
         loaded = self.pokemon_screen.loaded_sprites
 
-        host_pix = loaded.get(host_mon["id"])
-        player_pix = loaded.get(join_mon["id"])
+        def get_safe_sprite(mon_data):
+            if not mon_data:
+                return QPixmap()
 
-        # Host = opponent, Player = self
-        if protocol.is_host:
-            my_pix = host_pix
-            opp_pix = player_pix
+            pid = mon_data["id"]
+
+            if pid in loaded and loaded[pid] and not loaded[pid].isNull():
+                return loaded[pid]
+
+            pix = fetch_pokemon_sprite(pid)
+
+            if pix is None:
+                return QPixmap()
+            return pix
+
+        host_pix = get_safe_sprite(host_mon)
+        player_pix = get_safe_sprite(join_mon)
+
+        my_addr = protocol.fmt_address(protocol.local_addr)
+
+        if my_addr == host_key:
+            # I am Host
+            self.battle_screen.load_sprites(host_pix, player_pix)
+        elif my_addr == join_key:
+            # I am Player 2
+            self.battle_screen.load_sprites(player_pix, host_pix)
         else:
-            my_pix = player_pix
-            opp_pix = host_pix
-
-        self.battle_screen.load_sprites(my_pix, opp_pix)
+            # I am Spectator (Show Host on Left, Player 2 on Right)
+            self.battle_screen.load_sprites(host_pix, player_pix)
 
 # ---------------------------------------------
 # RUN APPLICATION

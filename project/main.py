@@ -40,7 +40,6 @@ def main_menu():
         if choice == 'H':
             # --- Run as Host ---
             host = Host(my_ip, config.DEFAULT_PORT)
-            print("\n[MAIN] Host mode started. Waiting for connections...")
             host.joiner_listen()
             host.run_game_loop()
 

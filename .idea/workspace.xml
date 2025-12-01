@@ -4,26 +4,28 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="c55e01fa-0538-4266-9fde-335d39c024b2" name="Changes" comment="GUI (ALMOST working)">
+    <list default="true" id="1da38658-64e5-420e-9746-082f90454fed" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/netwk-things.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/netwk-things.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/project/gui.py" beforeDir="false" afterPath="$PROJECT_DIR$/project/gui.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/project/host.py" beforeDir="false" afterPath="$PROJECT_DIR$/project/host.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/project/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/project/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/project/protocol.py" beforeDir="false" afterPath="$PROJECT_DIR$/project/protocol.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/project/spectator.py" beforeDir="false" afterPath="$PROJECT_DIR$/project/spectator.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/project/user.py" beforeDir="false" afterPath="$PROJECT_DIR$/project/user.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
-  <component name="FileTemplateManagerImpl">
-    <option name="RECENT_TEMPLATES">
-      <list>
-        <option value="Python Script" />
-      </list>
-    </option>
-  </component>
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="handshake" />
+        <entry key="$PROJECT_DIR$" value="main" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -31,210 +33,60 @@
   <component name="GitHubPullRequestSearchHistory">{
   &quot;lastFilter&quot;: {
     &quot;state&quot;: &quot;OPEN&quot;,
-    &quot;assignee&quot;: &quot;ItzGabbyMartinez&quot;
+    &quot;assignee&quot;: &quot;JeroenTenorio&quot;
   }
 }</component>
   <component name="GithubPullRequestsUISettings">{
   &quot;selectedUrlAndAccountId&quot;: {
     &quot;url&quot;: &quot;https://github.com/notgian/netwk-things.git&quot;,
-    &quot;accountId&quot;: &quot;879d603f-7e03-4839-850a-18e1341404fe&quot;
+    &quot;accountId&quot;: &quot;7315783d-ef26-4850-8c2d-8eee652a7a2f&quot;
   }
 }</component>
   <component name="ProjectColorInfo">{
-  &quot;associatedIndex&quot;: 1
+  &quot;associatedIndex&quot;: 5
 }</component>
-  <component name="ProjectId" id="35ws1EG34ForD5qTKiLaPwESOXx" />
+  <component name="ProjectId" id="36Cew7wblVpnkEXFPC8oRhtjjsH" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.config.executor": "Run",
-    "Python.gui.executor": "Run",
-    "Python.host.executor": "Run",
-    "Python.main.executor": "Run",
-    "Python.player.executor": "Run",
-    "Python.pokemon.executor": "Run",
-    "Python.protocol.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "GUI",
-    "ignore.virus.scanning.warn.message": "true",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python.gui.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;GUI&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;
   }
-}]]></component>
+}</component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-3aa1da707db6-JavaScript-PY-252.27397.106" />
-        <option value="bundled-python-sdk-4e2b1448bda8-9a97661f3031-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-252.27397.106" />
+        <option value="bundled-python-sdk-b3d66beaba9a-c6efb3732140-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-252.26199.168" />
       </set>
     </attachedChunks>
   </component>
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
-      <changelist id="c55e01fa-0538-4266-9fde-335d39c024b2" name="Changes" comment="" />
-      <created>1764032253350</created>
+      <changelist id="1da38658-64e5-420e-9746-082f90454fed" name="Changes" comment="" />
+      <created>1764515217094</created>
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
-      <updated>1764032253350</updated>
-      <workItem from="1764032269673" duration="9570000" />
-      <workItem from="1764043782258" duration="3561000" />
-      <workItem from="1764123936917" duration="4898000" />
-      <workItem from="1764316748978" duration="1318000" />
-      <workItem from="1764318101264" duration="1929000" />
-      <workItem from="1764320061601" duration="636000" />
-      <workItem from="1764334462492" duration="9608000" />
-      <workItem from="1764370307167" duration="16123000" />
-      <workItem from="1764396173003" duration="6953000" />
-      <workItem from="1764418420271" duration="5527000" />
-      <workItem from="1764474202526" duration="5591000" />
-      <workItem from="1764497648205" duration="663000" />
-      <workItem from="1764498335282" duration="10642000" />
+      <updated>1764515217094</updated>
     </task>
-    <task id="LOCAL-00001" summary="Game Protocols Done">
-      <option name="closed" value="true" />
-      <created>1764038581606</created>
-      <option name="number" value="00001" />
-      <option name="presentableId" value="LOCAL-00001" />
-      <option name="project" value="LOCAL" />
-      <updated>1764038581606</updated>
-    </task>
-    <task id="LOCAL-00002" summary="Game Protocols Done">
-      <option name="closed" value="true" />
-      <created>1764038593208</created>
-      <option name="number" value="00002" />
-      <option name="presentableId" value="LOCAL-00002" />
-      <option name="project" value="LOCAL" />
-      <updated>1764038593208</updated>
-    </task>
-    <task id="LOCAL-00003" summary="Game Done (No Chat)">
-      <option name="closed" value="true" />
-      <created>1764046410476</created>
-      <option name="number" value="00003" />
-      <option name="presentableId" value="LOCAL-00003" />
-      <option name="project" value="LOCAL" />
-      <updated>1764046410476</updated>
-    </task>
-    <task id="LOCAL-00004" summary="Fixed Maybe?">
-      <option name="closed" value="true" />
-      <created>1764144087543</created>
-      <option name="number" value="00004" />
-      <option name="presentableId" value="LOCAL-00004" />
-      <option name="project" value="LOCAL" />
-      <updated>1764144087543</updated>
-    </task>
-    <task id="LOCAL-00005" summary="Fixed Maybe?">
-      <option name="closed" value="true" />
-      <created>1764318257214</created>
-      <option name="number" value="00005" />
-      <option name="presentableId" value="LOCAL-00005" />
-      <option name="project" value="LOCAL" />
-      <updated>1764318257214</updated>
-    </task>
-    <task id="LOCAL-00006" summary="GUI (Setup)">
-      <option name="closed" value="true" />
-      <created>1764400436187</created>
-      <option name="number" value="00006" />
-      <option name="presentableId" value="LOCAL-00006" />
-      <option name="project" value="LOCAL" />
-      <updated>1764400436187</updated>
-    </task>
-    <task id="LOCAL-00007" summary="GUI (Setup)">
-      <option name="closed" value="true" />
-      <created>1764402819544</created>
-      <option name="number" value="00007" />
-      <option name="presentableId" value="LOCAL-00007" />
-      <option name="project" value="LOCAL" />
-      <updated>1764402819544</updated>
-    </task>
-    <task id="LOCAL-00008" summary="GUI (Setup)">
-      <option name="closed" value="true" />
-      <created>1764403016692</created>
-      <option name="number" value="00008" />
-      <option name="presentableId" value="LOCAL-00008" />
-      <option name="project" value="LOCAL" />
-      <updated>1764403016692</updated>
-    </task>
-    <task id="LOCAL-00009" summary="GUI (Almost Complete)">
-      <option name="closed" value="true" />
-      <created>1764423856253</created>
-      <option name="number" value="00009" />
-      <option name="presentableId" value="LOCAL-00009" />
-      <option name="project" value="LOCAL" />
-      <updated>1764423856253</updated>
-    </task>
-    <task id="LOCAL-00010" summary="GUI (Almost Complete)">
-      <option name="closed" value="true" />
-      <created>1764479636250</created>
-      <option name="number" value="00010" />
-      <option name="presentableId" value="LOCAL-00010" />
-      <option name="project" value="LOCAL" />
-      <updated>1764479636250</updated>
-    </task>
-    <task id="LOCAL-00011" summary="GUI (Almost Complete)">
-      <option name="closed" value="true" />
-      <created>1764498295649</created>
-      <option name="number" value="00011" />
-      <option name="presentableId" value="LOCAL-00011" />
-      <option name="project" value="LOCAL" />
-      <updated>1764498295650</updated>
-    </task>
-    <task id="LOCAL-00012" summary="GUI (Almost Complete)">
-      <option name="closed" value="true" />
-      <created>1764503238214</created>
-      <option name="number" value="00012" />
-      <option name="presentableId" value="LOCAL-00012" />
-      <option name="project" value="LOCAL" />
-      <updated>1764503238214</updated>
-    </task>
-    <task id="LOCAL-00013" summary="GUI (Almost Complete)">
-      <option name="closed" value="true" />
-      <created>1764503275142</created>
-      <option name="number" value="00013" />
-      <option name="presentableId" value="LOCAL-00013" />
-      <option name="project" value="LOCAL" />
-      <updated>1764503275142</updated>
-    </task>
-    <task id="LOCAL-00014" summary="GUI (ALMOST working)">
-      <option name="closed" value="true" />
-      <created>1764505092318</created>
-      <option name="number" value="00014" />
-      <option name="presentableId" value="LOCAL-00014" />
-      <option name="project" value="LOCAL" />
-      <updated>1764505092318</updated>
-    </task>
-    <option name="localTasksCounter" value="15" />
     <servers />
   </component>
-  <component name="TypeScriptGeneratedFilesManager">
-    <option name="version" value="3" />
-  </component>
-  <component name="VcsManagerConfiguration">
-    <MESSAGE value="Game Protocols Done" />
-    <MESSAGE value="Game Done (No Chat)" />
-    <MESSAGE value="Fixed Maybe?" />
-    <MESSAGE value="GUI (Setup)" />
-    <MESSAGE value="GUI (Almost Complete)" />
-    <MESSAGE value="GUI (ALMOST working)" />
-    <option name="LAST_COMMIT_MESSAGE" value="GUI (ALMOST working)" />
-  </component>
-  <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/CSNETWK$player.coverage" NAME="player Coverage Results" MODIFIED="1764043902839" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
-    <SUITE FILE_PATH="coverage/CSNETWK$main.coverage" NAME="main Coverage Results" MODIFIED="1764389302786" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
-    <SUITE FILE_PATH="coverage/CSNETWK$host.coverage" NAME="host Coverage Results" MODIFIED="1764502541331" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
-    <SUITE FILE_PATH="coverage/CSNETWK$protocol.coverage" NAME="protocol Coverage Results" MODIFIED="1764501507118" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
-    <SUITE FILE_PATH="coverage/CSNETWK$pokemon.coverage" NAME="pokemon Coverage Results" MODIFIED="1764038813344" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
-    <SUITE FILE_PATH="coverage/CSNETWK$gui.coverage" NAME="gui Coverage Results" MODIFIED="1764508978119" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
-    <SUITE FILE_PATH="coverage/CSNETWK$config.coverage" NAME="config Coverage Results" MODIFIED="1764501647902" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
 </project>
