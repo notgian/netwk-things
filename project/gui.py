@@ -1493,6 +1493,13 @@ class BattleScreen(QWidget):
         new_hp = max(0, old_hp - dmg)
         protocol.set_hp(defender, new_hp)
 
+        print(f"[GUI DEBUG] Damage applied locally: {defender} HP {old_hp}->{new_hp}")
+
+        # --- FIX: Force UI Update on Main Thread ---
+        if self.parent:
+            self.parent.hp_changed.emit()
+        # -------------------------------------------
+
         if self.role != "spectator":
             protocol.send_calculation_report(
                 attacker=protocol.match_data[attacker]["pokemon_name"],
@@ -1555,22 +1562,51 @@ class BattleScreen(QWidget):
     # =====================================================================
     def update_all_hp(self):
         protocol = self.protocol
+        if not protocol: return
 
-        my_key = protocol.fmt_address(protocol.local_addr)
-        opp_key = protocol.fmt_address(protocol.opponent_addr)
+        if self.role == "spectator":
+            host_key = protocol.fmt_address(protocol.host_addr)
+            join_key = None
+            for k in protocol.match_data.keys():
+                if k != "seed" and k != host_key:
+                    join_key = k
+                    break
 
-        my_data = protocol.match_data.get(my_key)
-        opp_data = protocol.match_data.get(opp_key)
+            if not join_key: return
 
-        if my_data:
-            self.player_hp_bar.set_values(
-                my_data["pokemon_name"], my_data["hp"], int(my_data["data"]["hp"])
-            )
+            host_data = protocol.match_data.get(host_key)
+            join_data = protocol.match_data.get(join_key)
 
-        if opp_data:
-            self.opponent_hp_bar.set_values(
-                opp_data["pokemon_name"], opp_data["hp"], int(opp_data["data"]["hp"])
-            )
+            # DEBUG: Check values
+            if host_data:
+                h_curr = host_data["hp"]
+                h_max = int(host_data["data"]["hp"])
+                print(f"[GUI DEBUG] Updating Host Bar: {h_curr}/{h_max}")
+                self.player_hp_bar.set_values(host_data["pokemon_name"], h_curr, h_max)
+
+            if join_data:
+                j_curr = join_data["hp"]
+                j_max = int(join_data["data"]["hp"])
+                print(f"[GUI DEBUG] Updating P2 Bar: {j_curr}/{j_max}")
+                self.opponent_hp_bar.set_values(join_data["pokemon_name"], j_curr, j_max)
+
+        else:
+            # ... (Original Host/Player logic remains same) ...
+            my_key = protocol.fmt_address(protocol.local_addr)
+            opp_key = protocol.fmt_address(protocol.opponent_addr)
+
+            my_data = protocol.match_data.get(my_key)
+            opp_data = protocol.match_data.get(opp_key)
+
+            if my_data:
+                self.player_hp_bar.set_values(
+                    my_data["pokemon_name"], my_data["hp"], int(my_data["data"]["hp"])
+                )
+
+            if opp_data:
+                self.opponent_hp_bar.set_values(
+                    opp_data["pokemon_name"], opp_data["hp"], int(opp_data["data"]["hp"])
+                )
 
     # =====================================================================
     # CHAT SYSTEM — BUBBLES, STICKERS & ANIMATION
@@ -1816,6 +1852,7 @@ class HPBar(QWidget):
 #=====================================================================================
 class MainWindow(QStackedWidget):
     spectator_sync_complete = pyqtSignal()
+    hp_changed = pyqtSignal()
     def __init__(self):
         super().__init__()
 
@@ -1834,6 +1871,7 @@ class MainWindow(QStackedWidget):
 
         self.setCurrentWidget(self.title_screen)
         self.spectator_sync_complete.connect(self.open_vs_screen)
+        self.hp_changed.connect(lambda: self.battle_screen.update_all_hp() if hasattr(self, 'battle_screen') else None)
 
     # -----------------------------------------
     # OPEN Pokémon SELECTION SCREEN
@@ -1952,11 +1990,21 @@ class MainWindow(QStackedWidget):
     def open_battle_screen(self):
         print("[GUI] Opening Battle Screen...")
 
-        role = "spectator"
-        if self.protocol_handler.is_host:
+        protocol = self.protocol_handler
+
+        my_addr = protocol.fmt_address(protocol.local_addr)
+
+        is_combatant = my_addr in protocol.match_data
+
+        if protocol.is_host:
             role = "host"
-        else:
+        elif is_combatant:
             role = "player"
+        else:
+            role = "spectator"
+
+        print(f"[GUI] Identified Role: {role} (My IP: {my_addr})")
+        # ---------------------------------------------------
 
         # Create the battle screen
         self.battle_screen = BattleScreen(
