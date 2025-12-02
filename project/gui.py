@@ -743,15 +743,14 @@ class SpectatePopup(QWidget):
 
         print("[GUI] Spectator handshake successful.")
 
-        # IMPORTANT FIX: protocol_handler = spec_obj.protocol
+        # IMPORTANT: Give GUI the actual protocol
         main_window = self.parent.parent
         main_window.protocol_handler = spec_obj.protocol
 
-        # Spectator waits for match_data (host & player BATTLE_SETUP)
-        QTimer.singleShot(50, main_window.wait_for_both_pokemon)
+        # Use spectator sync (NOT the player/host function)
+        main_window.wait_for_spectator_sync(spec_obj)
 
         self.hide()
-
 
 
 #=====================================================================================
@@ -2048,6 +2047,39 @@ class MainWindow(QStackedWidget):
 
         threading.Thread(target=poll, daemon=True).start()
 
+
+        def wait_for_spectator_sync(self, spec_obj=None):
+            print("[GUI] Waiting for battle state sync from Host...")
+
+            def poll():
+                try:
+                    while True:
+                        # 1. If protocol handler is not ready yet, wait.
+                        if self.protocol_handler is None:
+                            if spec_obj and spec_obj.protocol:
+                                self.protocol_handler = spec_obj.protocol
+                                print("[GUI] Protocol handler linked successfully!")
+                            else:
+                                time.sleep(0.5)
+                                continue
+
+                        protocol = self.protocol_handler
+
+                        # 2. How many players does the spectator see?
+                        keys = list(protocol.match_data.keys())
+                        players_found = [k for k in keys if k != "seed"]
+
+                        if len(players_found) >= 2:
+                            print("[GUI] Spectator sync complete! Opening VS screen...")
+                            QTimer.singleShot(0, self.open_vs_screen)
+                            break
+
+                        time.sleep(1.0)
+                except Exception as e:
+                    print(f"[GUI ERROR] Spectator polling crashed: {e}")
+
+            threading.Thread(target=poll, daemon=True).start()
+
     # -----------------------------------------
     # OPEN THE SETUP POPUP (STAT + COMM MODE)
     # -----------------------------------------
@@ -2059,12 +2091,20 @@ class MainWindow(QStackedWidget):
 
     def open_vs_screen(self):
         protocol = self.protocol_handler
+        if not protocol:
+            return
 
         host_key = protocol.fmt_address(protocol.host_addr)
-        player_key = protocol.fmt_address(protocol.joiner_addr)
 
-        if host_key not in protocol.match_data or player_key not in protocol.match_data:
-            print("[GUI] VS screen waiting for match_data sync...")
+        # Player = ANY OTHER entry in match_data that is not host_key or seed
+        player_key = None
+        for k in protocol.match_data.keys():
+            if k != "seed" and k != host_key:
+                player_key = k
+                break
+
+        if not player_key:
+            print("[GUI] VS screen waiting for full match_data sync...")
             QTimer.singleShot(100, self.open_vs_screen)
             return
 

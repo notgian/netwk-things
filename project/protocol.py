@@ -1,7 +1,8 @@
 import ast
+
 import messages
 from messages import CommunicationMode
-from messages import MessageType, ChatMessageType
+from messages import Message, MessageType, ChatMessageType
 from messages import (
     BattleSetupMessage,
     AttackAnnounceMessage,
@@ -22,7 +23,7 @@ class GameProtocolHandler:
     # -----------------------------
     #  INITIALIZATION & STATE
     # -----------------------------
-    def __init__(self, net_client, local_address, is_host=False):
+    def __init__(self, net_client, local_address, is_host=False, parent_user = None):
         self.net_client = net_client
 
         # RFC 5.2 / 5.3: battle states
@@ -54,6 +55,7 @@ class GameProtocolHandler:
 
         # cache Pokémon CSV so we don't reload repeatedly
         self._pokemon_db = None
+        self.parent_user = parent_user
 
         self.on_message_sent_hook = None
         # -------- GAME-LOOP HOOKS (for Host/Player to read) --------
@@ -108,28 +110,51 @@ class GameProtocolHandler:
             self._pokemon_db = load_pokemon_data()
         return self._pokemon_db
 
-    def _send_message(self, msg_obj: messages.Message):
-        if not self.opponent_addr:
+    def _send_message(self, msg_obj: messages.Message, to_address = None):
+        target_addr = to_address if to_address else self.opponent_addr
+
+        if not target_addr:
             print("[PROTOCOL] Cannot send message: opponent address not set.")
             return
 
         message_text = msg_obj.as_text()
         print(f"[PROTOCOL SEND]\n{message_text}\n---")
-        self.net_client.send_to(message_text, self.opponent_addr)
 
-        non_ack_messages = [
-            messages.MessageType.HANDSHAKE_REQUEST,
-            messages.MessageType.HANDSHAKE_RESPONSE,
-            messages.MessageType.SPECTATOR_REQUEST,
-            messages.MessageType.BATTLE_SETUP,
-            messages.MessageType.ACK
+        critical_messages = [
+            MessageType.ATTACK_ANNOUNCE, MessageType.DEFENSE_ANNOUNCE,
+            MessageType.CALCULATION_REPORT, MessageType.CALCULATION_CONFIRM,
+            MessageType.RESOLUTION_REQUEST, MessageType.GAME_OVER
         ]
 
-        if msg_obj.type not in non_ack_messages:
+        non_ack_messages = [MessageType.HANDSHAKE_REQUEST, MessageType.HANDSHAKE_RESPONSE,
+                            MessageType.SPECTATOR_REQUEST, MessageType.BATTLE_SETUP,
+                            MessageType.ACK, MessageType.GAME_OVER, MessageType.ACK]
+
+        peers = self.spectator_addrs + [self.opponent_addr]
+
+        if self.communication_mode == messages.CommunicationMode.P2P:
+            # Host broadcasts critical state changes to all peers (Joiner + Spectators)
+            if self.is_host and self.parent_user and msg_obj.type in critical_messages:
+                self.parent_user.broadcast_to_all(message_text, exclude_address=self.local_addr)
+
+                # Host awaits ACK only from the Joiner/Opponent for reliability, and not for GAME_OVER
+                if msg_obj.type != MessageType.GAME_OVER:
+                    # uncomment the code below and comment out entire remaining block if broken!
+                    # self.reliability_layer.await_ack(self.opponent_addr)
+                    for peer in peers:
+                        self.reliability_layer.await_ack(peer)
+                return
+
+            # P2P message (Player sends to Host, or non-critical message)
+            self.net_client.send_to(message_text, target_addr)
             self.reliability_layer.await_ack(self.opponent_addr)
 
-        if self.on_message_sent_hook and msg_obj.type != messages.MessageType.ACK_REPLY:
-            self.on_message_sent_hook(message_text)
+        elif self.communication_mode == messages.CommunicationMode.BROADCAST:
+            # hardcoding te broadcast address
+            self.net_client.send_to(message_text, "10.255.255.255")
+            for peer in peers:
+                self.reliability_layer.await_ack(peer)
+
 
     # -----------------------------
     #  SETUP OPPONENT & MATCH DATA
@@ -274,75 +299,63 @@ class GameProtocolHandler:
         # Auto-send ACK for any message with a sequence_number (RFC 5.1)
         seq_str = message_dict.get("sequence_number")
         if seq_str is not None:
+            # FIX 1 (Reverted): Host MUST ACK Spectator direct messages (like chat)
+            # or the Spectator will disconnect. We rely on _handle_ack to ignore the
+            # return ACK from the Spectator later.
             try:
                 seq_num = int(seq_str)
-                self._send_ack(seq_num)
+                self._send_ack(seq_num, from_address)
             except ValueError:
-                pass  # ignore bad sequence numbers for ACK purposes
+                pass
 
     # -----------------------------
     #  PROTOCOL 5.1: RELIABILITY
     # -----------------------------
-    def _send_ack(self, sequence_number: int):
+    def _send_ack(self, sequence_number: int, to_address: tuple):
         ack_msg = AckReplyMessage(ack_number=sequence_number+1)
-        self._send_message(ack_msg)
+        self.net_client.send_to(ack_msg.as_text(), to_address)
 
     def _handle_ack(self, message_dict: dict, from_address: tuple):
         ack_num = int(message_dict.get("ack_number"))
+        if self.is_host and from_address in self.spectator_addrs:
+            return
         self.reliability_layer.handle_ack(from_address, ack_num)
         print(f"[PROTOCOL] Received ACK ack_num={ack_num} from {from_address}")
 
     # -----------------------------
     #  PROTOCOL 4.4: BATTLE_SETUP (RECEIVE)
     # -----------------------------
-    def _handle_battle_setup(self, message_dict: dict, from_address: tuple):
+    def _handle_battle_setup(self, message_dict: dict, from_address):
         pokemon_name = message_dict.get("pokemon_name", "Unknown")
-
-        # Parse stat_boosts string into dict (RFC: object; our wire format is dict-as-string)
         raw_boosts = message_dict.get("stat_boosts", "{}")
         try:
             stat_boosts = ast.literal_eval(raw_boosts)
-            if not isinstance(stat_boosts, dict):
-                stat_boosts = {}
-        except Exception:
+            if not isinstance(stat_boosts, dict): stat_boosts = {}
+        except:
             stat_boosts = {}
 
-        # Load Pokémon stats for opponent
-        pokemon_db = self._get_pokemon_db()
-        if pokemon_name not in pokemon_db:
-            print(f"[PROTOCOL] Opponent sent unknown Pokémon '{pokemon_name}'.")
-            base_stats = {}
-            base_hp = 100
-        else:
-            base_stats = pokemon_db[pokemon_name]
-            base_hp = int(base_stats.get("hp", 100))
+        base_stats = self._get_pokemon_db().get(pokemon_name, {"hp": 100})
+        base_hp = int(base_stats.get("hp", 100))
 
-        self.match_data[self.fmt_address(self.opponent_addr)] = {
+        owner_addr_str = message_dict.get("owner_address")
+
+        if owner_addr_str:
+            target_key = owner_addr_str
+        else:
+            # Standard P2P behavior
+            target_key = self.fmt_address(from_address)
+
+        self.match_data[target_key] = {
             "pokemon_name": pokemon_name,
             "data": base_stats,
             "hp": base_hp,
             "stat_boosts": stat_boosts,
         }
 
-        # overwrite the communication_mode with the host's chosen mode
-        msg_cmode = message_dict["communication_mode"]
-        if (self.joiner_addr == self.local_addr):
-            if self.communication_mode is not None and msg_cmode != self.communication_mode.value:
-                print(f"Host chose a different communication mode. Setting to {msg_cmode}")
-            if msg_cmode == messages.CommunicationMode.BROADCAST.value:
-                self.communication_mode = messages.CommunicationMode.BROADCAST
-            elif msg_cmode == messages.CommunicationMode.P2P.value:
-                self.communication_mode = messages.CommunicationMode.P2P
+        if from_address == self.host_addr:
+            msg_cmode = message_dict.get("communication_mode", CommunicationMode.P2P.value)
+            self.communication_mode = CommunicationMode(msg_cmode)
 
-        print(
-            f"\n\n[PROTOCOL] Opponent BATTLE_SETUP: "
-            f"\n           address={self.fmt_address(self.opponent_addr)} "
-            f"\n           pokemon={pokemon_name}, "
-            f"\n           hp={base_hp}, "
-            f"\n           boosts={stat_boosts}\n"
-        )
-
-        # Check after receiving opponent setup
         self._check_battle_setup_complete()
 
     # -----------------------------
@@ -609,15 +622,7 @@ class GameProtocolHandler:
     def _handle_game_over(self, message_dict: dict, from_address: tuple):
         winner = message_dict.get("winner", "???")
         loser = message_dict.get("loser", "???")
-
         print(f"[PROTOCOL] GAME_OVER received. Winner={winner}, Loser={loser}")
-
-        # Store for GUI
-        self.last_received_game_over = {
-            "winner": winner,
-            "loser": loser
-        }
-
         self.game_state = "GAME_OVER"
 
     # -----------------------------
@@ -638,40 +643,22 @@ class GameProtocolHandler:
     def _handle_chat_message(self, message_dict: dict, from_address: tuple):
         sender = message_dict.get("sender_name", "Unknown")
         content_type = message_dict.get("content_type", "TEXT")
-
         if content_type == ChatMessageType.TEXT.value:
             text = message_dict.get("message_text", "")
-            print(f"[CHAT | {self.fmt_address(from_address)}] {text}")
-
-            # Store for GUI
-            self.last_chat_message = {
-                "sender_name": sender,
-                "content_type": ChatMessageType.TEXT,
-                "message_text": text,
-                "content": text
-            }
-
+            print(f"[CHAT | {sender}] {text}")
         elif content_type == ChatMessageType.STICKER.value:
-
-            sticker_path = (
-                    message_dict.get("content")
-                    or message_dict.get("sticker_data")
-                    or message_dict.get("sticker")
-                    or ""
-            )
-
-            print(f"[CHAT | {self.fmt_address(from_address)}] <STICKER> {sticker_path}")
-
-            # Store for GUI
-            self.last_chat_message = {
-                "sender_name": sender,
-                "content_type": ChatMessageType.STICKER,
-                "message_text": "",
-                "content": sticker_path
-            }
-
+            sticker_data_preview = message_dict.get("sticker_data", "")[:20] + "..."
+            print(f"[CHAT | {sender}] <STICKER> {sticker_data_preview}")
         else:
             print(f"[CHAT][{sender}] <UNKNOWN CONTENT TYPE>")
+
+        self.last_chat_message = message_dict
+
+        if self.is_host and self.parent_user:
+            # Create full message text from dict to ensure integrity during re-broadcast
+            clean_dict = {k: v for k, v in message_dict.items() if k != 'message_type'}
+            original_message_text = Message(MessageType.CHAT_MESSAGE, **clean_dict).as_text()
+            self.parent_user.broadcast_to_all(original_message_text, exclude_address=from_address)
 
     # -----------------------------
     #  MESSAGE PARSING
