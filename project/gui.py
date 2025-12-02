@@ -23,6 +23,12 @@ import requests
 import messages
 import threading
 import time
+import base64
+from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtCore import QByteArray, QBuffer, QIODevice
+import base64
+from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtCore import QByteArray, QBuffer, QIODevice
 from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QScrollArea, QTextEdit
 from PyQt5.QtCore import QEasingCurve, QPropertyAnimation
@@ -45,6 +51,7 @@ from PyQt5.QtCore import QThread, pyqtSignal  # make sure these are imported
 def get_my_ip():
     """Returns the actual local LAN IP address."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     try:
         s.connect(('10.255.255.255', 1))
         IP = s.getsockname()[0]
@@ -117,7 +124,77 @@ class SpectatorThread(QThread):
     def run(self):
         self.spec.connect_to_host()
 
+def encode_image_base64(path: str) -> str:
+    """
+    Loads image, resizes to 320x320 (prof requirement),
+    then adaptively compresses until UDP-safe (<55KB),
+    and outputs base64. Pure PyQt.
+    """
+    try:
+        pix = QPixmap(path)
+        if pix.isNull():
+            print("[Sticker] ERROR: Could not load sticker image.")
+            return ""
 
+        # Resize to exactly 320x320 px
+        pix = pix.scaled(320, 320)
+
+        # Convert to QImage
+        image = pix.toImage()
+
+        # -------------------------------
+        # Try PNG first
+        # -------------------------------
+        buffer = QByteArray()
+        qbuffer = QBuffer(buffer)
+        qbuffer.open(QIODevice.WriteOnly)
+        image.save(qbuffer, "PNG", quality=9)
+
+        data = bytes(buffer)
+        print(f"[Sticker] PNG size = {len(data)} bytes")
+
+        if len(data) <= 55000:
+            return base64.b64encode(data).decode("utf-8")
+
+        # -------------------------------
+        # Adaptive JPEG compression
+        # -------------------------------
+        print("[Sticker] PNG too large — switching to JPEG compression...")
+
+        quality = 60  # start gentle
+        final_data = None
+
+        while quality > 5:   # do not go below JPEG 5 (very low)
+            buffer = QByteArray()
+            qbuffer = QBuffer(buffer)
+            qbuffer.open(QIODevice.WriteOnly)
+
+            image.save(qbuffer, "JPEG", quality=quality)
+            data = bytes(buffer)
+
+            print(f"[Sticker] JPEG quality {quality} → {len(data)} bytes")
+
+            if len(data) <= 55000:
+                final_data = data
+                break
+
+            quality -= 5  # reduce more
+
+        # If still too big, force minimal JPEG
+        if final_data is None:
+            print("[Sticker] JPEG still too big — forcing minimum compression.")
+            buffer = QByteArray()
+            qbuffer = QBuffer(buffer)
+            qbuffer.open(QIODevice.WriteOnly)
+            image.save(qbuffer, "JPEG", quality=5)
+            final_data = bytes(buffer)
+            print(f"[Sticker] JPEG forced size = {len(final_data)} bytes")
+
+        return base64.b64encode(final_data).decode("utf-8")
+
+    except Exception as e:
+        print(f"[Sticker] ERROR encoding image: {e}")
+        return ""
 
 #=====================================================================================
 # 0.1 Pokemon data + sprite loading
@@ -1612,55 +1689,83 @@ class BattleScreen(QWidget):
     # CHAT SYSTEM — BUBBLES, STICKERS & ANIMATION
     # =====================================================================
     def make_bubble(self, sender, role, text, is_sticker=False):
-        colors = {
-            "host": "#1a73e8",
-            "player": "#e84545",
-            "spectator": "#00a86b",
-            "unknown": "#555555"
-        }
-        color = colors.get(role, "#555555")
+        # Canva colors
+        opponent_bg = "#d1f6ff"  # Mint/light blue
+        you_bg = "#423bff"  # Purple/blue (your design)
 
-        bubble = QWidget()
-        layout = QVBoxLayout(bubble)
-        layout.setContentsMargins(12, 8, 12, 8)
+        # Choose bubble color
+        bg_color = you_bg if sender == "You" else opponent_bg
 
+        bubble_wrapper = QWidget()
+        wrapper_layout = QHBoxLayout(bubble_wrapper)
+        wrapper_layout.setContentsMargins(10, 5, 10, 5)
+        wrapper_layout.setSpacing(0)
+
+        # Align depending on sender (you = right)
+        if sender == "You":
+            wrapper_layout.setAlignment(Qt.AlignRight)
+        else:
+            wrapper_layout.setAlignment(Qt.AlignLeft)
+
+        # Actual bubble card
+        bubble_card = QWidget()
+        bubble_card.setStyleSheet("""
+            background: transparent;
+            border-radius: 22px;
+        """)
+        card_layout = QVBoxLayout(bubble_card)
+        card_layout.setContentsMargins(12, 10, 12, 10)
+        card_layout.setSpacing(6)
+
+        # Timestamp
         timestamp = QTime.currentTime().toString("hh:mm AP")
-        sender_label = QLabel(f"{sender} • {timestamp}")
-        sender_label.setStyleSheet("color: gray; font-size: 12px;")
-        layout.addWidget(sender_label)
+        info_label = QLabel(f"{sender} • {timestamp}")
+        info_label.setStyleSheet("color: gray; font-size: 11px;")
+        card_layout.addWidget(info_label)
 
-        msg_label = QLabel()
-        msg_label.setWordWrap(True)
+        # Bubble content
+        msg = QLabel()
+        msg.setWordWrap(True)
 
         if is_sticker:
-            pix = QPixmap(text)
-            if not pix.isNull():
-                msg_label.setPixmap(pix.scaled(120, 120, Qt.KeepAspectRatio))
-            else:
-                msg_label.setText("[Sticker missing]")
+            try:
+                # text is base64 — decode
+                image_bytes = base64.b64decode(text)
+                pix = QPixmap()
+                pix.loadFromData(image_bytes)
+
+                msg.setPixmap(
+                    pix.scaled(180, 180, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                )
+
+            except Exception as e:
+                print("[CHAT] Failed to decode sticker:", e)
+                msg.setText("[Sticker Error]")
+
+            # Transparent bubble — stickers sit alone without colored bubble
+            msg.setStyleSheet("""
+                background: transparent;
+                border-radius: 0px;
+                padding: 0px;
+            """)
         else:
-            msg_label.setText(str(text))  # Ensure text is string
+            # Normal text message bubble
+            msg.setText(text)
+            msg.setStyleSheet(f"""
+                background: {bg_color};
+                border-radius: 20px;
+                padding: 14px;
+                color: {'white' if sender == "You" else 'black'};
+                font-size: 17px;
+            """)
 
-        msg_label.setStyleSheet(f"""
-            background: {color};
-            color: white;
-            border-radius: 12px;
-            padding: 10px;
-            font-size: 16px;
-        """)
-        layout.addWidget(msg_label)
+        # FIX WIDTH — bubbles do NOT stretch full width
+        msg.setMaximumWidth(350)  # matches Canva compact size
 
-        effect = QGraphicsOpacityEffect(bubble)
-        bubble.setGraphicsEffect(effect)
+        card_layout.addWidget(msg)
+        wrapper_layout.addWidget(bubble_card)
 
-        anim = QPropertyAnimation(effect, b"opacity", bubble)
-        anim.setDuration(250)
-        anim.setStartValue(0)
-        anim.setEndValue(1)
-        anim.setEasingCurve(QEasingCurve.OutQuad)
-        anim.start()
-
-        return bubble
+        return bubble_wrapper
 
     def append_chat(self, sender, role, text, is_sticker=False):
         bubble = self.make_bubble(sender, role, text, is_sticker)
@@ -1689,16 +1794,22 @@ class BattleScreen(QWidget):
         self.chat_input.clear()
 
     def open_sticker_menu(self):
-        sticker_path = "stickers/s1.png"
+        sticker_path = "imgs/s1.png"
 
-        # Show locally
-        self.append_chat("You", self.role, sticker_path, is_sticker=True)
+            # Convert to base64
+        b64_data = encode_image_base64(sticker_path)
 
-        self.protocol.send_chat_message(
-            sender_name=self.role,
-            content_type=messages.ChatMessageType.STICKER,
-            content=sticker_path
-        )
+        # Display immediately on sender side
+        self.append_chat("You", self.role, b64_data, is_sticker=True)
+
+        try:
+            self.protocol.send_chat_message(
+                    self.role,
+                    messages.ChatMessageType.STICKER,
+                    b64_data
+                    )
+        except Exception as e:
+            print("[CHAT] send sticker error:", e)
 
     def poll_chat(self):
         try:
