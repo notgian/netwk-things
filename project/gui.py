@@ -657,8 +657,21 @@ class SpectatePopup(QWidget):
         print(f"[GUI] Spectating host at: {host_ip}")
 
         spec_obj = Spectator(host_ip, config.DEFAULT_PORT, local_ip=my_ip, local_port=0)
-        self.spec_thread = SpectatorThread(spec_obj)
-        self.spec_thread.start()
+
+        ok = spec_obj.connect_to_host()
+        if not ok:
+            print("[GUI] Failed to spectate.")
+            self.hide()
+            return
+
+        print("[GUI] Spectator handshake successful.")
+
+        # IMPORTANT FIX: protocol_handler = spec_obj.protocol
+        main_window = self.parent.parent
+        main_window.protocol_handler = spec_obj.protocol
+
+        # Spectator waits for match_data (host & player BATTLE_SETUP)
+        QTimer.singleShot(50, main_window.wait_for_both_pokemon)
 
         self.hide()
 
@@ -1987,8 +2000,9 @@ class MainWindow(QStackedWidget):
     def open_battle_screen(self):
         print("[GUI] Opening Battle Screen...")
 
-        role = "spectator"
-        if self.protocol_handler.is_host:
+        if hasattr(self.protocol_handler, "is_spectator") and self.protocol_handler.is_spectator:
+            role = "spectator"
+        elif self.protocol_handler.is_host:
             role = "host"
         else:
             role = "player"

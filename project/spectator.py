@@ -3,12 +3,17 @@ from client import Client
 from protocol import GameProtocolHandler
 from config import HANDSHAKE_TIMEOUT
 from threading import Thread
-from ast import literal_eval
 
 class Spectator:
     def __init__(self, host_ip, host_port, local_ip, local_port=0):
+        self.is_spectator = True
         self.net_client = Client()
+
+        if not self.net_client.bind_socket(local_ip, local_port):
+            exit()
+
         self.protocol = None
+        self.local_addr = self.net_client.sock.getsockname()
         self.host_ip = (host_ip, host_port)
 
         self.is_listening = False
@@ -18,9 +23,6 @@ class Spectator:
         self.should_quit = False
 
         self.input_buff = ""
-
-        if not self.net_client.bind_socket(local_ip, local_port):
-            exit()
         print(f"Spectator client initialized. Will connect to {host_ip}:{host_port}")
 
     def connect_to_host(self):
@@ -47,7 +49,10 @@ class Spectator:
                 print("\n[SPECTATOR] Received response from unexpected address {address}.")
                 return False
 
-            self.protocol = GameProtocolHandler(self.net_client)
+            self.protocol = GameProtocolHandler(self.net_client,
+                                                self.local_addr,
+                                                is_host=False,
+                                                parent_user=None)
             message_dict = self.protocol._parse_message(message)
 
             # Handle handshake response here
@@ -128,7 +133,6 @@ class Spectator:
                     continue
 
                 if address == self.host_ip:
-                    # FORCE FLUSH TO CONSOLE
                     print(f"\n[SPECTATOR RECEIVED]: \n{message}\n")
                     if self.protocol:
                         self.protocol.process_message(message, address)
@@ -140,9 +144,9 @@ class Spectator:
 
     def __user_input__(self):
         """ Thread method: handles user input (only for chat) """
-        while self.is_listening:
+        while self.is_taking_input:
             try:
-                inp = input()
+                inp = input().strip()
 
                 if inp.lower() in ['quit', 'exit']:
                     self.should_quit = True
@@ -150,10 +154,16 @@ class Spectator:
                     self.is_taking_input = False
                     break
 
+                if inp.startswith("/message "):
+                    message = inp[len("/message "):].strip()
+                    sender = self.fmt_address(self.local_addr)
+                    self.protocol.send_chat_message(sender_name=sender, content_type=m.ChatMessageType.TEXT, content=message)
+                elif inp and inp.startswith("/"):
+                    print(f"[SPECTATOR] Command {inp.split()[0]} is not supported. Use /message.")
 
-                if self.protocol:
-                    self.protocol.send_chat_message(self.net_client, m.ChatMessageType.TEXT, inp)
             except EOFError:
+                break
+            except Exception as e:
                 break
 
     def __start_taking_input__(self):
@@ -166,3 +176,11 @@ class Spectator:
         if not self.is_taking_input:
             return
         self.is_taking_input = False
+
+    def fmt_address(self, address = None) -> str:
+        """ Helper method for address formatting. """
+        if self.protocol:
+            return self.protocol.fmt_address(address)
+        if address is None:
+            return "UNKNOWN"
+        return f"{address[0]}:{address[1]}"
