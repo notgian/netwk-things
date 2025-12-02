@@ -47,6 +47,8 @@ from PyQt5.QtCore import QThread, pyqtSignal  # make sure these are imported
 def get_my_ip():
     """Returns the actual local LAN IP address."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
     try:
         s.connect(('10.255.255.255', 1))
         IP = s.getsockname()[0]
