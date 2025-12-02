@@ -633,9 +633,22 @@ class GameProtocolHandler:
         if content_type == ChatMessageType.TEXT.value:
             text = message_dict.get("message_text", "")
             print(f"[CHAT | {sender}] {text}")
-        elif content_type == ChatMessageType.STICKER.value:
-            sticker_data_preview = message_dict.get("sticker_data", "")[:20] + "..."
-            print(f"[CHAT | {sender}] <STICKER> {sticker_data_preview}")
+        elif content_type == ChatMessageType.STICKER.value or content_type == "STICKER":
+            b64_data = (
+                message_dict.get("content")
+                or message_dict.get("sticker_data")
+                or message_dict.get("message_text")
+                or ""
+            )
+
+            print(f"[CHAT | {self.fmt_address(from_address)}] <STICKER> {message_dict.get('sticker_data')}")
+
+            self.last_chat_message = {
+                "sender_name": sender,
+                "content_type": ChatMessageType.STICKER,
+                "message_text": "",
+                "content": b64_data
+            }
         else:
             print(f"[CHAT][{sender}] <UNKNOWN CONTENT TYPE>")
 
