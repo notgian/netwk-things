@@ -7,8 +7,6 @@
     <list default="true" id="c55e01fa-0538-4266-9fde-335d39c024b2" name="Changes" comment="added spectator">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/project/gui.py" beforeDir="false" afterPath="$PROJECT_DIR$/project/gui.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/project/host.py" beforeDir="false" afterPath="$PROJECT_DIR$/project/host.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/project/spectator.py" beforeDir="false" afterPath="$PROJECT_DIR$/project/spectator.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -254,7 +252,7 @@
     <SUITE FILE_PATH="coverage/CSNETWK$host.coverage" NAME="host Coverage Results" MODIFIED="1764502541331" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
     <SUITE FILE_PATH="coverage/CSNETWK$protocol.coverage" NAME="protocol Coverage Results" MODIFIED="1764649500515" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
     <SUITE FILE_PATH="coverage/CSNETWK$pokemon.coverage" NAME="pokemon Coverage Results" MODIFIED="1764038813344" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
-    <SUITE FILE_PATH="coverage/CSNETWK$gui.coverage" NAME="gui Coverage Results" MODIFIED="1764657302168" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
+    <SUITE FILE_PATH="coverage/CSNETWK$gui.coverage" NAME="gui Coverage Results" MODIFIED="1764658164498" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
     <SUITE FILE_PATH="coverage/CSNETWK$config.coverage" NAME="config Coverage Results" MODIFIED="1764655387344" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/project" />
   </component>
 </project>
