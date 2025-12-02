@@ -1478,7 +1478,7 @@ class BattleScreen(QWidget):
         # Input box
         self.chat_input = QLineEdit(self.chat_panel)
         self.chat_input.setGeometry(
-            self.scaler.x(40), self.scaler.y(925),
+            self.scaler.x(10), self.scaler.y(925),
             self.scaler.w(400), self.scaler.h(60)
         )
         self.chat_input.setStyleSheet("""
@@ -1491,7 +1491,7 @@ class BattleScreen(QWidget):
         # --- STICKER BUTTON (LEFT) ---
         self.sticker_btn = QPushButton(self.chat_panel)
         self.sticker_btn.setGeometry(
-            self.scaler.x(460), self.scaler.y(925),
+            self.scaler.x(430), self.scaler.y(925),
             self.scaler.w(60), self.scaler.h(60)
         )
         self.sticker_btn.setIcon(QIcon("imgs/sticker_btn.png"))
@@ -1505,7 +1505,7 @@ class BattleScreen(QWidget):
         # --- SEND BUTTON (RIGHT) ---
         self.send_btn = QPushButton(self.chat_panel)
         self.send_btn.setGeometry(
-            self.scaler.x(530), self.scaler.y(925),
+            self.scaler.x(500), self.scaler.y(925),
             self.scaler.w(60), self.scaler.h(60)
         )
         self.send_btn.setIcon(QIcon("imgs/send_btn.png"))
@@ -1570,7 +1570,6 @@ class BattleScreen(QWidget):
         new_hp = max(0, old_hp - dmg)
         protocol.set_hp(defender, new_hp)
 
-        print(f"[GUI DEBUG] Damage applied locally: {defender} HP {old_hp}->{new_hp}")
 
         # --- FIX: Force UI Update on Main Thread ---
         if self.parent:
@@ -1658,13 +1657,11 @@ class BattleScreen(QWidget):
             if host_data:
                 h_curr = host_data["hp"]
                 h_max = int(host_data["data"]["hp"])
-                print(f"[GUI DEBUG] Updating Host Bar: {h_curr}/{h_max}")
                 self.player_hp_bar.set_values(host_data["pokemon_name"], h_curr, h_max)
 
             if join_data:
                 j_curr = join_data["hp"]
                 j_max = int(join_data["data"]["hp"])
-                print(f"[GUI DEBUG] Updating P2 Bar: {j_curr}/{j_max}")
                 self.opponent_hp_bar.set_values(join_data["pokemon_name"], j_curr, j_max)
 
         else:
