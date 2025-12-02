@@ -126,22 +126,35 @@ class GameProtocolHandler:
             MessageType.RESOLUTION_REQUEST, MessageType.GAME_OVER
         ]
 
-        # Host broadcasts critical state changes to all peers (Joiner + Spectators)
-        if self.is_host and self.parent_user and msg_obj.type in critical_messages:
-            self.parent_user.broadcast_to_all(message_text, exclude_address=self.local_addr)
+        non_ack_messages = [MessageType.HANDSHAKE_REQUEST, MessageType.HANDSHAKE_RESPONSE, 
+                            MessageType.SPECTATOR_REQUEST, MessageType.BATTLE_SETUP, 
+                            MessageType.ACK, MessageType.GAME_OVER, MessageType.ACK]
 
-            # Host awaits ACK only from the Joiner/Opponent for reliability, and not for GAME_OVER
-            if msg_obj.type != MessageType.GAME_OVER:
-                self.reliability_layer.await_ack(self.opponent_addr)
-            return
+        peers = self.spectator_addrs + [self.opponent_addr]
 
-        # P2P message (Player sends to Host, or non-critical message)
-        self.net_client.send_to(message_text, target_addr)
+        if self.communication_mode == messages.CommunicationMode.P2P:
+            # Host broadcasts critical state changes to all peers (Joiner + Spectators)
+            if self.is_host and self.parent_user and msg_obj.type in critical_messages:
+                self.parent_user.broadcast_to_all(message_text, exclude_address=self.local_addr)
 
-        # Handle P2P reliability checks
-        if msg_obj.type not in [MessageType.HANDSHAKE_REQUEST, MessageType.HANDSHAKE_RESPONSE,
-                                MessageType.SPECTATOR_REQUEST, MessageType.BATTLE_SETUP, MessageType.ACK, MessageType.GAME_OVER]:
-            self.reliability_layer.await_ack(target_addr)
+                # Host awaits ACK only from the Joiner/Opponent for reliability, and not for GAME_OVER
+                if msg_obj.type != MessageType.GAME_OVER:
+                    # uncomment the code below and comment out entire remaining block if broken!
+                    # self.reliability_layer.await_ack(self.opponent_addr)
+                    for peer in peers:
+                        self.reliability_layer.await_ack(peer)
+                return
+
+            # P2P message (Player sends to Host, or non-critical message)
+            self.net_client.send_to(message_text, target_addr)
+            self.reliability_layer.await_ack(self.opponent_addr)
+
+        elif self.communication_mode == messages.CommunicationMode.BROADCAST:
+            # hardcoding te broadcast address
+            self.net_client.send_to(message_text, "10.255.255.255")
+            for peer in peers:
+                self.reliability_layer.await_ack(peer)
+
 
     # -----------------------------
     #  SETUP OPPONENT & MATCH DATA
