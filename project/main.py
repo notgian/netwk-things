@@ -1,49 +1,77 @@
-import messages as msg
+import socket
+import config
+import os
+from host import Host
+from player import Player
+from spectator import Spectator
+
+def get_my_ip():
+    """Attempts to get the local network IP. Falls back to localhost."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('10.255.255.255', 1))
+        IP = s.getsockname()[0]
+    except Exception:
+        # Fallback to localhost
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
 
 
-def main():
-    messages = [
-        msg.HandshakeRequestMessage(),
-        msg.HandshakeResponseMessage(seed=12345),
-        msg.SpectatorRequestMessage(),
-        msg.BattleSetupMessage(communication_mode=msg.CommunicationMode.P2P,
-                               pokemon_name="Pikachu",
-                               stat_boosts={"sp_attack_uses": 5, "sp_def_uses": 5}),
-        msg.AttackAnnounceMessage(move_name="Thunderbolt",
-                                  sequence_number=4),
-        msg.DefenseAnnounceMessage(sequence_number=5),
-        msg.CalculationReportMessage(attacker="Pikachu",
-                                     move_used="Thunderbolt",
-                                     remaining_health=23,
-                                     damage_dealt=4,
-                                     defender_hp_remaining=45,
-                                     status_message="Sample status message am too lazy",
-                                     sequence_number=6),
-        msg.CalculationConfirmMessage(sequence_number=7),
-        msg.ResolutionRequestMessage(attacker="Pikachu",
-                                     move_used="Thunderbolt",
-                                     damage_dealt="4",
-                                     defender_hp_remaining=45,
-                                     sequence_number=8),
-        msg.GameOverMessage(winner="Pikachu",
-                            loser="Charmander",
-                            sequence_number=9),
-        msg.ChatMessage(sender_name="Player1",
-                        content_type=msg.ChatMessageType.TEXT,
-                        content="Good luck",
-                        sequence_number=10),
-        msg.ChatMessage(sender_name="Player2",
-                        content_type=msg.ChatMessageType.STICKER,
-                        content="Imagine this is b64 data",
-                        sequence_number=11),
-        msg.AckReplyMessage(ack_number=12),
-    ]
+def print_header():
+    print("\n====================================")
+    print("        POKE-PROTOCOL v1.0")
+    print("      RFC-Compliant Battle Game")
+    print("====================================\n")
 
-    print("==============================")
-    for message in messages:
-        print(message.as_text())
-        print("==============================")
+def main_menu():
+    loop_menu = True
+    while loop_menu:
+        my_ip = get_my_ip()
+        print(f"Local IP: {my_ip}")
+        print(f"Default Port: {config.DEFAULT_PORT}")
+
+        choice = ""
+        while choice not in ['H', 'J', 'S']:
+            choice = input("Run as (H)ost, (J)oiner, or (S)pectator? ").strip().upper()
+
+        # HOST MODE
+        if choice == 'H':
+            # --- Run as Host ---
+            host = Host(my_ip, config.DEFAULT_PORT)
+            host.joiner_listen()
+            host.run_game_loop()
+
+        # Joiner Mode
+        elif choice == 'J':
+            host_ip = input(f"Enter Host IP (leave blank for {my_ip}): ").strip()
+
+            if not host_ip:
+                host_ip = my_ip
+
+            player = Player(host_ip, config.DEFAULT_PORT,local_ip=my_ip, local_port=0)
+            player.connect()
+            player.run_game_loop()
+
+        # Spectator Mode
+        elif choice == 'S':
+            host_ip = input(f"Enter Host IP (leave blank for {my_ip}): ").strip()
+
+            if not host_ip:
+                host_ip = my_ip
+
+            spectator = Spectator(host_ip, config.DEFAULT_PORT,local_ip=my_ip, local_port=0)
+            spectator.connect_to_host()
+
+        choice = ""
+        while choice not in ["Y", "N"]:
+            choice = input("Start a new game? [Y/N]").strip().upper()
+
+        if choice == "N":
+            loop_menu = False
 
 
 if __name__ == "__main__":
-    main()
+    print_header()
+    main_menu()
